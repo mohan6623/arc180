@@ -4,7 +4,7 @@
  * for days while app.js kept changing, and the mismatch broke the page. Assets
  * that never change (font, icons) stay cache-first. The API is never cached.
  */
-const CACHE = "arc180-v5";
+const CACHE = "arc180-v6";
 const SHELL = ["/", "/app.js", "/manifest.webmanifest"];
 const IMMUTABLE = /\.(woff2|png|svg|ico)$/;
 

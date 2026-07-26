@@ -35,13 +35,39 @@ async function api(path, opts) {
 document.querySelectorAll("[data-go]").forEach(btn => {
   btn.addEventListener("click", () => {
     const id = btn.dataset.go;
-    leaveThread();                          // any tab, including chat, lands on the list
     document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
     document.querySelectorAll(".tab[data-go],.sb-item[data-go],.chat-fab").forEach(b =>
       b.classList.toggle("active", b.dataset.go === id));
+    document.body.classList.toggle("on-chat", id === "chat");
+    if (id === "chat") { closeDrawer(); measureComposer(); fitChat(); dockPeek(); }
+    else { closeDrawer(); document.body.classList.remove("dock-up"); }
     window.scrollTo({ top: 0 });
   });
 });
+
+/* ---------------- the dock: hidden in the agent window, swipe up to call it back ---------------- */
+let dockTimer = null;
+function dockPeek(ms = 2600) {
+  if (!document.body.classList.contains("on-chat")) return;
+  document.body.classList.add("dock-up");
+  clearTimeout(dockTimer);
+  dockTimer = setTimeout(() => document.body.classList.remove("dock-up"), ms);
+}
+function dockHide() {
+  clearTimeout(dockTimer);
+  document.body.classList.remove("dock-up");
+}
+
+{
+  let y0 = null;
+  const zone = () => document.getElementById("swipe-zone");
+  zone().addEventListener("touchstart", e => { y0 = e.touches[0].clientY; }, { passive: true });
+  zone().addEventListener("touchmove", e => {
+    if (y0 !== null && y0 - e.touches[0].clientY > 24) { dockPeek(); y0 = null; }
+  }, { passive: true });
+  zone().addEventListener("click", () => dockPeek());
+  document.querySelector(".tabbar").addEventListener("pointerdown", () => dockPeek());
+}
 
 /* ---------------- render ---------------- */
 function greeting() {
@@ -347,10 +373,7 @@ function chipText() {
 }
 
 function renderChips() {
-  const t = chipText();
-  const a = $("new-chip-label"), b = $("thread-chip-label");
-  if (a) a.textContent = t;
-  if (b) b.textContent = t;
+  $("thread-chip-label").textContent = chipText();
 }
 
 async function capabilities(prov) {
@@ -416,8 +439,7 @@ document.querySelectorAll("[data-plus]").forEach(btn =>
     const wasOpen = !$("plus-pop").hidden;
     closePops();
     if (wasOpen) return;
-    plusTarget = btn.dataset.plus;
-    $("plus-new").hidden = plusTarget !== "thread";
+    $("plus-new").hidden = !currentConvo;
     placePop($("plus-pop"), btn);
   }));
 
@@ -427,11 +449,7 @@ document.addEventListener("click", e => {
 document.addEventListener("keydown", e => { if (e.key === "Escape") closePops(); });
 
 /* ---------------- the + menu: drop KB context into the box ---------------- */
-let plusTarget = "new";
-
-function composerInput() {
-  return $(plusTarget === "thread" ? "thread-input" : "new-chat-input");
-}
+function composerInput() { return $("thread-input"); }
 
 function insertText(el, text) {
   const at = el.selectionStart ?? el.value.length;
@@ -458,11 +476,7 @@ document.querySelectorAll("[data-insert]").forEach(b =>
     if (make) insertText(composerInput(), make());
   }));
 
-$("plus-new").addEventListener("click", () => {
-  closePops();
-  $("back-to-history").click();
-  $("new-chat-input").focus();
-});
+$("plus-new").addEventListener("click", () => { closePops(); newChat(); });
 
 $("pick-provider").addEventListener("change", async e => {
   provider = e.target.value;
@@ -495,8 +509,7 @@ function noteSwitch(text) {
   hint.classList.add("switching");
 }
 
-let showArchived = false, showAllConvos = false;
-const RECENT_N = 4;
+let showArchived = false;
 
 function convoRow(c) {
   return `<button class="convo ${c.archived ? "archived" : ""}" data-convo="${c.id}">` +
@@ -509,25 +522,22 @@ function renderChat() {
   renderChips();
   const all = S.convos || [];
   const live = all.filter(c => !c.archived), arch = all.filter(c => c.archived);
-  const shown = showAllConvos ? live : live.slice(0, RECENT_N);
 
-  let html = shown.map(convoRow).join("") ||
-    `<div class="card empty-note">No sessions yet.<br>Ask something below — it starts a new one.</div>`;
-  if (live.length > RECENT_N)
-    html += `<button class="see-all" id="see-all">${showAllConvos ? "Show fewer" : `All ${live.length} sessions`}</button>`;
-  if (arch.length && showAllConvos) {
+  let html = live.map(convoRow).join("") ||
+    `<div class="empty-note">No sessions yet.<br>Ask something to start one.</div>`;
+  if (arch.length) {
     html += `<button class="arch-head ${showArchived ? "open" : ""}" id="arch-toggle">` +
       `Archived <span class="cnt">${arch.length}</span><span class="car">▼</span></button>` +
       (showArchived ? arch.map(convoRow).join("") : "");
   }
   $("convo-list").innerHTML = html;
 
-  $("see-all")?.addEventListener("click", () => { showAllConvos = !showAllConvos; renderChat(); });
   $("arch-toggle")?.addEventListener("click", () => { showArchived = !showArchived; renderChat(); });
 
   document.querySelectorAll("[data-convo]").forEach(b =>
     b.addEventListener("click", e => {
       if (e.target.closest("[data-del],[data-unarchive]")) return;
+      closeDrawer();
       openConvo(b.dataset.convo);
     }));
   document.querySelectorAll("[data-unarchive]").forEach(b =>
@@ -557,78 +567,217 @@ async function setArchived(id, archived) {
   await refreshConvos();
 }
 
-const CTX_C = 2 * Math.PI * 13;   // the ring in the composer
+/* ---------------- context ring + breakdown ---------------- */
+const CTX_C = 2 * Math.PI * 13;
+let ctxNow = null;
+
+function kfmt(n) {
+  return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k" : String(n);
+}
 
 function renderContext(ctx) {
   const dot = $("ctx-dot"), fg = $("ctx-fill");
-  if (!ctx) { dot.hidden = true; return; }
+  ctxNow = ctx || null;
+  if (!ctx) { dot.hidden = true; hideCtxPop(); return; }
   dot.hidden = false;
   const pct = Math.min(100, Math.max(0, ctx.pct));
   fg.style.strokeDasharray = CTX_C;
   fg.style.strokeDashoffset = CTX_C * (1 - pct / 100);
   fg.setAttribute("class", "fg " + (pct > 85 ? "hot" : pct > 60 ? "warn" : ""));
-  ctxLabel = `Context ${pct}% used of ${Math.round(ctx.window / 1000)}k`;
-  dot.title = ctxLabel;
+  dot.setAttribute("aria-label", `Context ${pct}% used`);
+  if (!$("ctx-pop").hidden) fillCtxPop();
 }
 
-let ctxLabel = "";
-$("ctx-dot").addEventListener("click", () => ctxLabel && toast(ctxLabel));
+function fillCtxPop() {
+  const c = ctxNow;
+  if (!c) return;
+  $("cp-used").textContent = `${kfmt(c.used)} used`;
+  $("cp-window").textContent = `of ${kfmt(c.window)} · ${c.pct}%`;
+  const parts = c.parts || [];
+  $("cp-bar").innerHTML = parts.map(p =>
+    `<i class="cp-${p.key}" style="width:${(100 * p.tokens / c.window).toFixed(2)}%"></i>`).join("");
+  $("cp-rows").innerHTML = parts.map(p =>
+    `<div class="cp-row"><span class="sw cp-${p.key}"></span>${esc(p.label)}` +
+    `<span class="n">${kfmt(p.tokens)}</span></div>`).join("") +
+    `<div class="cp-foot">${c.turns} turn${c.turns === 1 ? "" : "s"} in this session · ` +
+    `switching model re-sends the transcript</div>`;
+}
+
+function showCtxPop() {
+  if (!ctxNow) return;
+  fillCtxPop();
+  const pop = $("ctx-pop"), r = $("ctx-dot").getBoundingClientRect();
+  pop.hidden = false;
+  const h = pop.offsetHeight, w = pop.offsetWidth;
+  pop.style.top = Math.max(8, r.top - h - 10) + "px";
+  pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px";
+}
+function hideCtxPop() { $("ctx-pop").hidden = true; }
+
+$("ctx-dot").addEventListener("mouseenter", showCtxPop);
+$("ctx-dot").addEventListener("mouseleave", hideCtxPop);
+$("ctx-dot").addEventListener("click", e => {
+  e.stopPropagation();
+  $("ctx-pop").hidden ? showCtxPop() : hideCtxPop();
+});
 
 function scrollToBottom(smooth) {
   const pane = $("thread-msgs");
   pane.scrollTo({ top: pane.scrollHeight, behavior: smooth ? "smooth" : "auto" });
 }
 
-/* body text, already escaped, with search matches wrapped */
-function withHits(text) {
-  const safe = esc(text);
-  if (!findQ) return safe;
-  const rx = new RegExp(findQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-  return safe.replace(rx, m => `<mark class="hit">${m}</mark>`);
+/* scrolling down in the thread puts the dock away */
+{
+  let last = 0;
+  $("thread-msgs").addEventListener("scroll", () => {
+    const y = $("thread-msgs").scrollTop;
+    if (y > last + 6) dockHide();
+    last = y;
+  }, { passive: true });
+}
+
+/* ---------------- sidebar collapse (desktop) ---------------- */
+function setSidebar(collapsed) {
+  document.body.classList.toggle("sb-collapsed", collapsed);
+  try { localStorage.setItem("arc180-sb", collapsed ? "1" : "0"); } catch {}
+}
+$("sb-collapse").addEventListener("click", () => setSidebar(true));
+$("sb-expand").addEventListener("click", () => setSidebar(false));
+try { if (localStorage.getItem("arc180-sb") === "1") setSidebar(true); } catch {}
+
+/* ---------------- markdown: replies arrive as markdown, so show them as markdown ---------------- */
+function inline(s) {
+  return s
+    .replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g, "$1<em>$2</em>")
+    .replace(/(^|\W)_([^_\n]+)_(?=\W|$)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
+function md(text) {
+  const lines = esc(text).replace(/\r/g, "").split("\n");
+  const out = [];
+  let para = [], list = null, quote = [], code = null, fence = "";
+
+  const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; } };
+  const flushList = () => { if (list) { out.push(`<${list.tag}>${list.items.join("")}</${list.tag}>`); list = null; } };
+  const flushQuote = () => { if (quote.length) { out.push(`<blockquote>${inline(quote.join(" "))}</blockquote>`); quote = []; } };
+  const flushAll = () => { flushPara(); flushList(); flushQuote(); };
+
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    const f = line.match(/^\s*(```|~~~)(.*)$/);
+    if (code !== null) {
+      if (f && f[1] === fence) { out.push(`<pre><code>${code.join("\n")}</code></pre>`); code = null; }
+      else code.push(raw);
+      continue;
+    }
+    if (f) { flushAll(); code = []; fence = f[1]; continue; }
+    if (!line.trim()) { flushAll(); continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { flushAll(); out.push("<hr>"); continue; }
+
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { flushAll(); const n = h[1].length; out.push(`<h${n}>${inline(h[2])}</h${n}>`); continue; }
+
+    const q = line.match(/^\s*&gt;\s?(.*)$/);   // the text is escaped before parsing
+    if (q) { flushPara(); flushList(); quote.push(q[1]); continue; }
+    flushQuote();
+
+    const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+    const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      flushPara();
+      const tag = ul ? "ul" : "ol";
+      if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+      list.items.push(`<li>${inline((ul || ol)[1])}</li>`);
+      continue;
+    }
+    flushList();
+    para.push(line.trim());
+  }
+  if (code !== null) out.push(`<pre><code>${code.join("\n")}</code></pre>`);
+  flushAll();
+  return out.join("");
 }
 
 function renderThread(c) {
   $("thread-title").textContent = c.title || "Session";
   lastConvo = c;
   $("thread-msgs").innerHTML = c.messages.map(m => {
-    if (m.role === "user") return `<div class="msg user">${withHits(m.text)}</div>`;
+    if (m.role === "user") return `<div class="msg user">${esc(m.text)}</div>`;
     const who = labelFor(m.provider || c.provider) + (m.model ? ` · ${shortModel(m.model)}` : "")
       + (m.effort ? ` · ${m.effort}` : "");
     const moved = m.switched ? `<div class="switch-note">context handed to ${esc(who)}</div>` : "";
+    const body = m.ok === false ? esc(m.text) : `<div class="md">${md(m.text)}</div>`;
     return moved + `<div class="msg bot ${m.ok === false ? "err" : ""}">` +
-      `<div class="from">${esc(who)}</div>${withHits(m.text)}</div>`;
+      `<div class="from">${esc(who)}</div>${body}</div>`;
   }).join("");
   renderContext(c.context);
-  if (findQ) markHits(); else scrollToBottom(false);
+  if (findQ) { paintHits(); markHits(); } else scrollToBottom(false);
+}
+
+/* highlight search matches in the rendered DOM, so markup is never broken */
+function paintHits() {
+  if (!findQ) return;
+  const rx = new RegExp(findQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  const walk = document.createTreeWalker($("thread-msgs"), NodeFilter.SHOW_TEXT);
+  const targets = [];
+  for (let n = walk.nextNode(); n; n = walk.nextNode())
+    if (rx.test(n.nodeValue)) { rx.lastIndex = 0; targets.push(n); }
+  targets.forEach(n => {
+    const frag = document.createDocumentFragment();
+    let last = 0, m;
+    rx.lastIndex = 0;
+    while ((m = rx.exec(n.nodeValue))) {
+      frag.append(n.nodeValue.slice(last, m.index));
+      const mk = document.createElement("mark");
+      mk.className = "hit";
+      mk.textContent = m[0];
+      frag.append(mk);
+      last = m.index + m[0].length;
+    }
+    frag.append(n.nodeValue.slice(last));
+    n.replaceWith(frag);
+  });
 }
 
 /* on a phone the keyboard shrinks the visual viewport — keep the composer above it */
 const PHONE = matchMedia("(max-width:899px)");
-function fitThread() {
-  const el = $("chat-thread"), vv = window.visualViewport;
-  if (!vv || !PHONE.matches || !document.body.classList.contains("in-thread")) {
-    el.style.height = ""; return;
-  }
+function fitChat() {
+  const el = $("chat"), vv = window.visualViewport;
+  if (!vv || !PHONE.matches || !document.body.classList.contains("on-chat")) { el.style.height = ""; return; }
   el.style.height = vv.height + "px";
 }
-window.visualViewport?.addEventListener("resize", fitThread);
+window.visualViewport?.addEventListener("resize", fitChat);
 
-function enterThread() {
-  $("chat-history").style.display = "none";
-  $("chat-thread").style.display = "flex";
-  document.body.classList.add("in-thread");
-  fitThread();
+/* ---------------- sessions drawer ---------------- */
+function openDrawer() {
+  renderChat();
+  $("drawer").classList.add("show");
+  $("scrim").classList.add("show");
 }
+function closeDrawer() {
+  $("drawer").classList.remove("show");
+  $("scrim").classList.remove("show");
+}
+$("open-drawer").addEventListener("click", openDrawer);
+$("drawer-close").addEventListener("click", closeDrawer);
+$("scrim").addEventListener("click", closeDrawer);
+$("new-chat").addEventListener("click", () => { closeDrawer(); newChat(); });
 
-function leaveThread() {
-  if (!currentConvo && !document.body.classList.contains("in-thread")) return;
+function newChat(focus = true) {
   currentConvo = null;
+  lastConvo = null;
   closeFind();
   closePops();
-  $("chat-thread").style.display = "none";
-  $("chat-history").style.display = "block";
-  document.body.classList.remove("in-thread");
-  fitThread();
+  $("thread-title").textContent = "New chat";
+  $("thread-msgs").innerHTML =
+    `<div class="chat-empty"><b>Ask anything</b>grounded in ${esc(S.kb_name || "your knowledge base")}</div>`;
+  renderContext(null);
+  renderChips();
+  noteSwitch("");
+  if (focus && !PHONE.matches) $("thread-input").focus();
 }
 
 async function openConvo(id) {
@@ -637,7 +786,6 @@ async function openConvo(id) {
   provider = c.provider || provider;
   model = c.model || "";
   effort = c.effort || "";
-  enterThread();
   renderChips();
   noteSwitch("");
   renderThread(c);
@@ -645,8 +793,6 @@ async function openConvo(id) {
 
 /* ---------------- kebab menu: rename, find, archive, delete ---------------- */
 let lastConvo = null;
-
-$("back-to-history").addEventListener("click", leaveThread);
 
 document.querySelector("[data-more]").addEventListener("click", e => {
   e.stopPropagation();
@@ -682,7 +828,7 @@ $("more-archive").addEventListener("click", async () => {
   const archived = !(S.convos || []).find(c => c.id === id)?.archived;
   await setArchived(id, archived);
   toast(archived ? "Archived" : "Unarchived");
-  if (archived) $("back-to-history").click();
+  if (archived) newChat();
 });
 
 $("more-delete").addEventListener("click", async () => {
@@ -693,7 +839,7 @@ $("more-delete").addEventListener("click", async () => {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
   });
-  $("back-to-history").click();
+  newChat();
   await refreshConvos();
   toast("Session deleted");
 });
@@ -758,13 +904,15 @@ function draftTitle(message) {
   return t ? t[0].toUpperCase() + t.slice(1) : "New session";
 }
 
-async function sendChat(inputEl, convoId) {
+async function sendChat() {
+  const inputEl = $("thread-input");
   const message = inputEl.value.trim();
   if (!message) return;
   if (!S.providers[provider]) { toast(`${labelFor(provider)} CLI is not installed on this PC`); return; }
   stopRec();
   inputEl.value = "";
   autoGrow(inputEl);
+  const convoId = currentConvo;
   const who = labelFor(provider) + (model ? ` · ${model}` : "");
   const thinking = `<div class="msg user">${esc(message)}</div>` +
     `<div class="msg bot thinking">${esc(who)} is thinking…</div>`;
@@ -774,15 +922,13 @@ async function sendChat(inputEl, convoId) {
   } else {
     currentConvo = "pending";
     closeFind();
-    enterThread();
     $("thread-title").textContent = draftTitle(message);
     renderChips();
     $("thread-msgs").innerHTML = thinking;
   }
   scrollToBottom(true);
-  ["thread-send", "new-chat-send"].forEach(id => {
-    $(id).dataset.busy = "1"; $(id).disabled = true;
-  });
+  $("thread-send").dataset.busy = "1";
+  $("thread-send").disabled = true;
   try {
     const r = await api("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -800,39 +946,38 @@ async function sendChat(inputEl, convoId) {
     toast("Chat failed: " + e.message);
     document.querySelector(".msg.thinking")?.remove();
   } finally {
-    ["thread-send", "new-chat-send"].forEach(id => delete $(id).dataset.busy);
+    delete $("thread-send").dataset.busy;
     syncSend();
   }
 }
 
 /* ---------------- composer: grow with the text, send from inside the box ---------------- */
-const TOUCH = matchMedia("(pointer: coarse)").matches;
-
 function autoGrow(el) {
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 184) + "px";
+  measureComposer();
 }
 
 function syncSend() {
-  [["new-chat-input", "new-chat-send"], ["thread-input", "thread-send"]].forEach(([i, s]) => {
-    const inp = $(i), btn = $(s);
-    if (inp && btn && !btn.dataset.busy) btn.disabled = !inp.value.trim();
-  });
+  const btn = $("thread-send");
+  if (!btn.dataset.busy) btn.disabled = !$("thread-input").value.trim();
 }
 
-[["new-chat-input", null], ["thread-input", "thread"]].forEach(([id, kind]) => {
-  const el = $(id);
+/* the dock parks above the composer, so it never covers the box */
+function measureComposer() {
+  document.documentElement.style.setProperty(
+    "--composer-h", document.querySelector("#chat .composer").offsetHeight + "px");
+}
+
+{
+  const el = $("thread-input");
   el.addEventListener("input", () => { autoGrow(el); syncSend(); });
   el.addEventListener("keydown", e => {
-    // Enter sends on a keyboard, newline on a phone — Shift+Enter is always a newline
-    if (e.key === "Enter" && !e.shiftKey && !TOUCH) {
-      e.preventDefault();
-      sendChat(el, kind ? currentConvo : null);
-    }
+    // Enter sends, Shift+Enter breaks the line — same as ChatGPT
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
   });
-});
-$("new-chat-send").addEventListener("click", () => sendChat($("new-chat-input"), null));
-$("thread-send").addEventListener("click", () => sendChat($("thread-input"), currentConvo));
+}
+$("thread-send").addEventListener("click", () => sendChat());
 syncSend();
 
 /* ---------------- dictation ---------------- */
@@ -847,7 +992,7 @@ document.querySelectorAll("[data-mic]").forEach(btn =>
   btn.addEventListener("click", () => {
     if (!SR) { toast("This browser can't transcribe — Chrome or Edge can"); return; }
     if (rec) { stopRec(); return; }
-    const el = $(btn.dataset.mic === "thread" ? "thread-input" : "new-chat-input");
+    const el = $("thread-input");
     rec = new SR();
     rec.lang = navigator.language || "en-IN";
     rec.continuous = true;
@@ -956,6 +1101,8 @@ async function boot() {
     USER = S.user;
     RIVAL = S.rival;
     render();
+    newChat(false);
+    measureComposer();
     startRealtime();
   } catch (e) {
     $("loading").textContent = "Could not reach the ARC/180 server — is server.py running? (" + e.message + ")";

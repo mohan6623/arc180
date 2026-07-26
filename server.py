@@ -484,11 +484,20 @@ def find_convo(chats, convo_id):
 
 
 def convo_context(convo, model=None):
-    """How full the window is, so the UI can show it before it becomes a problem."""
-    used = sum(approx_tokens(m["text"]) for m in convo.get("messages", []))
+    """How full the window is, broken down the way Cursor shows it."""
+    msgs = convo.get("messages", [])
+    asked = sum(approx_tokens(m["text"]) for m in msgs if m["role"] == "user")
+    replied = sum(approx_tokens(m["text"]) for m in msgs if m["role"] != "user")
+    system = approx_tokens(GROUNDING_SYS)
+    used = asked + replied + system
     window = context_window(model or convo.get("model"))
     return {"used": used, "window": window,
-            "pct": min(100, round(100 * used / window))}
+            "pct": min(100, round(100 * used / window)),
+            "parts": [{"key": "system", "label": "Grounding", "tokens": system},
+                      {"key": "user", "label": "Your messages", "tokens": asked},
+                      {"key": "reply", "label": "Replies", "tokens": replied},
+                      {"key": "free", "label": "Free", "tokens": max(0, window - used)}],
+            "turns": sum(1 for m in msgs if m["role"] == "user")}
 
 
 def save_chats(obj):

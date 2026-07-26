@@ -37,17 +37,34 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 .eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .num{font-variant-numeric:tabular-nums}
 
-.shell{max-width:1400px;margin:0 auto;min-height:100vh}
+.shell{max-width:1680px;margin:0 auto;min-height:100vh}
 main{padding:0 16px 130px}
 @media (min-width:900px){
-  .shell{display:grid;grid-template-columns:236px 1fr;padding:10px 12px 10px 0;gap:0}
-  main{background:var(--panel);border:1px solid var(--line-soft);border-radius:22px;padding:30px 34px 56px;min-height:calc(100vh - 20px)}
+  .shell{display:grid;grid-template-columns:236px 1fr;padding:10px 12px 10px 0;gap:0;transition:grid-template-columns .2s}
+  main{background:var(--panel);border:1px solid var(--line-soft);border-radius:22px;padding:26px 30px 34px;
+    min-height:calc(100vh - 20px);display:flex;flex-direction:column}
+  .screen.on{flex:1;min-height:0}
+  body.sb-collapsed .shell{grid-template-columns:0 1fr;padding-left:12px}
+  body.sb-collapsed .sb{display:none}
+  .sb-expand{display:none;position:fixed;top:20px;left:20px;z-index:35;width:34px;height:34px;border-radius:10px;
+    background:var(--card);border:1px solid var(--line);color:var(--muted);place-items:center}
+  body.sb-collapsed .sb-expand{display:grid}
+  .sb-expand:hover{color:var(--ink)}
+  .sb-expand svg{width:17px;height:17px}
+  body.sb-collapsed main{padding-left:64px}
 }
+.sb-expand{display:none}
 
 /* sidebar */
 .sb{display:none}
 @media (min-width:900px){
-  .sb{display:flex;flex-direction:column;padding:24px 18px 20px;gap:2px}
+  .sb{display:flex;flex-direction:column;padding:18px 18px 20px;gap:2px}
+  .sb-top{display:flex;align-items:center;gap:8px;padding:0 8px 14px}
+  .sb-word{font-weight:700;font-size:16px;letter-spacing:.02em}
+  .sb-word b{color:var(--yellow)}
+  .sb-collapse{margin-left:auto;width:30px;height:30px;border-radius:9px;color:var(--faint);display:grid;place-items:center}
+  .sb-collapse:hover{background:var(--card-2);color:var(--ink)}
+  .sb-collapse svg{width:17px;height:17px}
   .sb-profile{display:flex;align-items:center;gap:10px;padding:4px 8px;margin-bottom:16px}
   .sb-profile .pav{width:30px;height:30px;border-radius:9px;background:var(--card-2);display:grid;place-items:center;font-size:13px;font-weight:700}
   .sb-profile .pname{font-size:14px;font-weight:600}
@@ -72,7 +89,13 @@ main{padding:0 16px 130px}
 @media (min-width:900px){.topbar{display:none}}
 
 /* mobile nav */
-.tabbar{position:fixed;bottom:16px;left:0;right:0;z-index:10;display:flex;gap:11px;align-items:center;justify-content:center;padding:0 14px;pointer-events:none}
+.tabbar{position:fixed;bottom:16px;left:0;right:0;z-index:40;display:flex;gap:11px;align-items:center;justify-content:center;padding:0 14px;pointer-events:none;transition:transform .24s ease,opacity .2s}
+/* in the agent window the dock gets out of the way; a swipe up at the foot brings it back */
+body.on-chat .tabbar{transform:translateY(190%);opacity:0}
+body.on-chat.dock-up .tabbar{transform:none;opacity:1;bottom:calc(var(--composer-h,86px) + 14px)}
+.swipe-zone{position:fixed;left:0;right:0;bottom:0;height:16px;z-index:39;display:none}
+body.on-chat .swipe-zone{display:block}
+@media (min-width:900px){body.on-chat .swipe-zone{display:none}}
 .nav-pill{pointer-events:auto;display:flex;align-items:center;justify-content:space-between;flex:1;max-width:420px;background:rgba(28,28,31,.97);border:1px solid var(--line);border-radius:999px;padding:7px;box-shadow:0 14px 38px rgba(0,0,0,.55);backdrop-filter:blur(14px)}
 .tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0 8px;border-radius:999px;color:#C6C6CD;font-size:10.5px;font-weight:500;flex:1;letter-spacing:.01em}
 .tab svg{width:21px;height:21px}
@@ -251,23 +274,52 @@ main{padding:0 16px 130px}
 
 /* chat */
 /* composer: one box that holds the text, the controls and the send button */
-.composer{margin-top:16px}
-#chat-thread .composer{position:absolute;left:0;right:0;bottom:0;margin:0;
-  padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 12px);
-  background:linear-gradient(to top,var(--bg) 58%,rgba(7,7,8,0));backdrop-filter:blur(7px)}
-@media (min-width:900px){
-  #chat-thread .composer{padding:12px 22px 18px;border-radius:0 0 21px 21px;
-    background:linear-gradient(to top,var(--panel) 58%,rgba(20,20,23,0))}
-}
-.ctx-dot{flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:50%}
+.composer{flex:none;padding:6px max(14px,calc((100% - 760px)/2)) calc(env(safe-area-inset-bottom,0px) + 12px)}
+@media (min-width:900px){.composer{padding-bottom:4px}}
+.ctx-dot{flex:none;width:22px;height:22px;display:grid;place-items:center;border-radius:50%}
 .ctx-dot[hidden]{display:none}
-.ctx-dot svg{width:22px;height:22px;transform:rotate(-90deg)}
-.ctx-dot circle{fill:none;stroke-width:4}
+.ctx-dot svg{width:19px;height:19px;transform:rotate(-90deg)}
+.ctx-dot circle{fill:none;stroke-width:4.5}
 .ctx-dot circle.bg{stroke:var(--card-2)}
 .ctx-dot circle.fg{stroke:var(--green);transition:stroke-dashoffset .4s}
 .ctx-dot circle.fg.warn{stroke:var(--yellow)}
 .ctx-dot circle.fg.hot{stroke:var(--coral)}
 .ctx-dot:hover{background:var(--card-2)}
+
+/* context breakdown, Cursor-style */
+.ctx-pop{position:fixed;z-index:70;width:246px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.55);padding:13px 14px 11px;font-size:12px}
+.ctx-pop[hidden]{display:none}
+.cp-top{display:flex;align-items:baseline;gap:6px;margin-bottom:9px}
+.cp-top b{font-size:14px;font-weight:700}
+.cp-top span{color:var(--faint);font-size:11.5px}
+.cp-bar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--card-2);margin-bottom:11px}
+.cp-bar i{display:block;height:100%}
+.cp-row{display:flex;align-items:center;gap:8px;padding:3.5px 0;color:var(--muted)}
+.cp-row .sw{width:8px;height:8px;border-radius:2px;flex:none}
+.cp-row .n{margin-left:auto;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.cp-sys{background:var(--purple)}
+.cp-user{background:var(--yellow)}
+.cp-reply{background:var(--blue)}
+.cp-free{background:var(--card-2)}
+.cp-foot{margin-top:9px;padding-top:9px;border-top:1px solid var(--line-soft);color:var(--faint);font-size:11px}
+
+/* sessions drawer */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:45;opacity:0;visibility:hidden;transition:.2s}
+.scrim.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;left:0;bottom:0;width:min(312px,84vw);z-index:46;background:var(--card);
+  border-right:1px solid var(--line);display:flex;flex-direction:column;padding:0 10px 14px;
+  transform:translateX(-101%);visibility:hidden;transition:transform .22s ease,visibility .22s}
+.drawer.show{transform:none;visibility:visible}
+.drawer-head{display:flex;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 6px 10px}
+.dr-title{font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+.icon-x{margin-left:auto;width:30px;height:30px;border-radius:8px;color:var(--muted);display:grid;place-items:center;font-size:13px}
+.icon-x:hover{background:var(--card-2);color:var(--ink)}
+.new-chat{display:flex;align-items:center;gap:9px;width:100%;text-align:left;font-size:13.5px;font-weight:600;
+  padding:11px 14px;border-radius:12px;border:1px solid var(--line);margin-bottom:10px}
+.new-chat svg{width:16px;height:16px}
+.new-chat:hover{background:var(--card-2)}
+.drawer .convo-list{overflow-y:auto;flex:1;min-height:0}
 .cbox{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:12px 12px 11px;
   display:flex;flex-direction:column;gap:9px;transition:border-color .15s}
 .cbox:focus-within{border-color:var(--faint)}
@@ -320,18 +372,17 @@ main{padding:0 16px 130px}
 .pop-item:hover{background:var(--card-2)}
 .pop-item[hidden]{display:none}
 .pop-item .pi{width:18px;text-align:center;color:var(--faint);font-size:13px;flex:none}
-/* an open session takes the whole screen — bar, messages, floating composer */
-body.in-thread .topbar,body.in-thread .tabbar{display:none}
-#chat-thread{position:fixed;inset:0;z-index:20;flex-direction:column;background:var(--bg);overflow:hidden}
+/* the chat screen is the whole screen on a phone: bar, messages, composer at the foot */
+#chat.screen.on{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;
+  background:var(--bg);padding:0;overflow:hidden;animation:none}
 @media (min-width:900px){
-  #chat-thread{left:calc(max(0px,(100vw - 1400px)/2) + 236px);right:calc(max(0px,(100vw - 1400px)/2) + 12px);
-    top:10px;bottom:10px;background:var(--panel);border:1px solid var(--line-soft);border-radius:22px}
+  #chat.screen.on{position:static;inset:auto;z-index:auto;background:none;flex:1;min-height:0}
 }
 
 /* thread bar: sessions on the left, name in the middle, streak and options on the right */
 .thread-bar{flex:none;display:flex;align-items:center;gap:10px;
   padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 12px;border-bottom:1px solid var(--line-soft)}
-@media (min-width:900px){.thread-bar{padding:16px 20px}}
+@media (min-width:900px){.thread-bar{padding:2px 4px 14px;border-bottom:none}}
 .streak-chip{flex:none;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
 .streak-chip b{color:var(--ink)}
 .hamb{flex:none;width:34px;height:34px;border-radius:10px;display:flex;flex-direction:column;
@@ -382,17 +433,42 @@ mark.hit.on{background:var(--yellow);color:#111}
 .see-all{width:100%;text-align:left;font-size:12.5px;font-weight:600;color:var(--muted);padding:11px 14px;border-radius:11px}
 .see-all:hover{color:var(--ink);background:var(--card)}
 .empty-note{padding:26px 20px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
-/* the pane is the screen; the newest message sits at the bottom and scrolls under the composer */
+/* the pane is the screen; the newest message sits at the bottom. one reading column, centred */
 .chat-thread{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;
-  padding:16px 14px 150px;scroll-behavior:smooth;overscroll-behavior:contain}
+  padding:16px max(14px,calc((100% - 760px)/2)) 22px;scroll-behavior:smooth;overscroll-behavior:contain}
 .chat-thread>:first-child{margin-top:auto}
-@media (min-width:900px){.chat-thread{padding:20px 22px 160px}}
+.chat-empty{margin:auto;text-align:center;color:var(--faint);font-size:14px;line-height:1.7}
+.chat-empty b{display:block;color:var(--muted);font-size:16px;font-weight:600;margin-bottom:4px}
 .msg{max-width:88%;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:break-word}
 .msg.user{align-self:flex-end;background:var(--yellow-soft);border:1px solid rgba(242,201,76,.3);border-radius:16px 16px 4px 16px;padding:12px 15px}
 .msg.bot{align-self:flex-start;background:var(--card-2);border:1px solid var(--line-soft);border-radius:16px 16px 16px 4px;padding:14px 16px}
 .msg.bot .from{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--purple);margin-bottom:8px;white-space:normal}
 .msg.err{border-color:rgba(232,117,107,.4)}
 .msg.thinking{color:var(--muted);font-style:italic}
+
+/* rendered markdown in a reply */
+.md{white-space:normal}
+.md>*:first-child{margin-top:0}
+.md>*:last-child{margin-bottom:0}
+.md p{margin:0 0 9px}
+.md h1,.md h2,.md h3,.md h4{font-size:14px;font-weight:700;margin:14px 0 6px;letter-spacing:-.01em}
+.md h1{font-size:15.5px}
+.md ul,.md ol{margin:0 0 9px;padding-left:19px}
+.md li{margin:3px 0}
+.md li>ul,.md li>ol{margin:3px 0}
+.md strong{font-weight:700;color:#fff}
+.md em{font-style:italic}
+.md a{color:var(--blue);text-decoration:underline;text-underline-offset:2px}
+.md code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:rgba(255,255,255,.07);
+  padding:1.5px 5px;border-radius:5px;word-break:break-word}
+.md pre{background:#0B0B0E;border:1px solid var(--line-soft);border-radius:10px;padding:11px 13px;
+  overflow-x:auto;margin:0 0 10px}
+.md pre code{background:none;padding:0;font-size:11.5px;line-height:1.55;white-space:pre}
+.md blockquote{border-left:2px solid var(--line);padding-left:12px;margin:0 0 9px;color:var(--muted)}
+.md hr{border:none;border-top:1px solid var(--line-soft);margin:13px 0}
+.md table{border-collapse:collapse;width:100%;margin:0 0 10px;font-size:12.5px;display:block;overflow-x:auto}
+.md th,.md td{border:1px solid var(--line-soft);padding:6px 9px;text-align:left}
+.md th{background:var(--card-2);font-weight:600}
 .sync-banner{background:rgba(232,117,107,.1);border:1px solid rgba(232,117,107,.4);color:#F0D6D3;border-radius:12px;padding:13px 16px;margin:0 0 16px;font-size:13.5px;line-height:1.55}
 .sync-banner strong{color:var(--coral)}
 .sync-banner pre{margin:9px 0 0;padding:9px 11px;background:var(--bg);border-radius:8px;font-family:ui-monospace,Consolas,monospace;font-size:11px;white-space:pre-wrap;overflow-x:auto;color:var(--muted)}
@@ -404,6 +480,13 @@ mark.hit.on{background:var(--yellow);color:#111}
 <body>
 <div class="shell">
   <nav class="sb" aria-label="Main">
+    <div class="sb-top">
+      <span class="sb-word">ARC<b>/180</b></span>
+      <button class="sb-collapse" id="sb-collapse" aria-label="Collapse sidebar" title="Collapse sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
+      </button>
+    </div>
     <div class="sb-profile">
       <span class="pav" id="sb-av">M</span>
       <span class="pname" id="sb-name">—</span>
@@ -560,69 +643,45 @@ mark.hit.on{background:var(--yellow);color:#111}
     </section>
 
     <section class="screen" id="chat">
-      <div id="chat-history">
-        <div class="convo-list" id="convo-list"></div>
-        <div class="composer">
-          <div class="cbox">
-            <textarea id="new-chat-input" rows="1" placeholder="Ask anything…" aria-label="Ask the knowledge base"></textarea>
-            <div class="cbar">
-              <button class="cb-icon" data-plus="new" aria-haspopup="menu" aria-label="Add">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-              </button>
-              <button class="model-chip" data-picker="new" aria-haspopup="menu">
-                <span class="dot"></span><span id="new-chip-label">Claude</span><span class="caret">▾</span>
-              </button>
-              <button class="cb-icon mic" data-mic="new" aria-label="Dictate">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
-              </button>
-              <button class="cb-send" id="new-chat-send" aria-label="Send">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
+      <div class="thread-bar">
+        <button class="hamb" id="open-drawer" aria-label="Sessions" title="Sessions">
+          <span></span><span></span><span></span>
+        </button>
+        <h2 id="thread-title">New chat</h2>
+        <span class="streak-chip" id="thread-streak" title="Current streak">🔥 <b>0</b></span>
+        <button class="kebab" data-more aria-haspopup="menu" aria-label="Session options">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+        </button>
       </div>
-      <div id="chat-thread" style="display:none">
-        <div class="thread-bar">
-          <button class="hamb" id="back-to-history" aria-label="All sessions" title="All sessions">
-            <span></span><span></span><span></span>
-          </button>
-          <h2 id="thread-title">…</h2>
-          <span class="streak-chip" id="thread-streak" title="Current streak">🔥 <b>0</b></span>
-          <button class="kebab" data-more aria-haspopup="menu" aria-label="Session options">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
-          </button>
-        </div>
-        <div class="find-bar" id="find-bar" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
-          <input type="text" id="find-input" placeholder="Search in this chat" aria-label="Search in this chat">
-          <span class="find-count" id="find-count"></span>
-          <button class="find-nav" id="find-prev" aria-label="Previous match">▲</button>
-          <button class="find-nav" id="find-next" aria-label="Next match">▼</button>
-          <button class="find-nav" id="find-close" aria-label="Close search">✕</button>
-        </div>
-        <div class="chat-thread" id="thread-msgs"></div>
-        <div class="composer">
-          <div class="cbox">
-            <textarea id="thread-input" rows="1" placeholder="Reply…" aria-label="Message"></textarea>
-            <div class="cbar">
-              <button class="cb-icon" data-plus="thread" aria-haspopup="menu" aria-label="Add">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-              </button>
-              <button class="model-chip" data-picker="thread" aria-haspopup="menu">
-                <span class="dot"></span><span id="thread-chip-label">Claude</span><span class="caret">▾</span>
-              </button>
-              <span class="composer-hint" id="switch-hint"></span>
-              <button class="ctx-dot" id="ctx-dot" aria-label="Context used" hidden>
-                <svg viewBox="0 0 32 32"><circle class="bg" cx="16" cy="16" r="13"/><circle class="fg" id="ctx-fill" cx="16" cy="16" r="13"/></svg>
-              </button>
-              <button class="cb-icon mic" data-mic="thread" aria-label="Dictate">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
-              </button>
-              <button class="cb-send" id="thread-send" aria-label="Send">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
-              </button>
-            </div>
+      <div class="find-bar" id="find-bar" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input type="text" id="find-input" placeholder="Search in this chat" aria-label="Search in this chat">
+        <span class="find-count" id="find-count"></span>
+        <button class="find-nav" id="find-prev" aria-label="Previous match">▲</button>
+        <button class="find-nav" id="find-next" aria-label="Next match">▼</button>
+        <button class="find-nav" id="find-close" aria-label="Close search">✕</button>
+      </div>
+      <div class="chat-thread" id="thread-msgs"></div>
+      <div class="composer">
+        <div class="cbox">
+          <textarea id="thread-input" rows="1" placeholder="Ask anything…" aria-label="Message"></textarea>
+          <div class="cbar">
+            <button class="cb-icon" data-plus="thread" aria-haspopup="menu" aria-label="Add">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button class="model-chip" data-picker="thread" aria-haspopup="menu">
+              <span class="dot"></span><span id="thread-chip-label">Claude</span><span class="caret">▾</span>
+            </button>
+            <span class="composer-hint" id="switch-hint"></span>
+            <button class="cb-icon mic" data-mic="thread" aria-label="Dictate">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+            </button>
+            <button class="ctx-dot" id="ctx-dot" aria-label="Context used" hidden>
+              <svg viewBox="0 0 32 32"><circle class="bg" cx="16" cy="16" r="13"/><circle class="fg" id="ctx-fill" cx="16" cy="16" r="13"/></svg>
+            </button>
+            <button class="cb-send" id="thread-send" aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -649,6 +708,30 @@ mark.hit.on{background:var(--yellow);color:#111}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
   </button>
 </nav>
+
+<div class="swipe-zone" id="swipe-zone"></div>
+<button class="sb-expand" id="sb-expand" aria-label="Show sidebar" title="Show sidebar">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg>
+</button>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Sessions">
+  <div class="drawer-head">
+    <span class="dr-title">Sessions</span>
+    <button class="icon-x" id="drawer-close" aria-label="Close">✕</button>
+  </div>
+  <button class="new-chat" id="new-chat">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    New chat
+  </button>
+  <div class="convo-list" id="convo-list"></div>
+</aside>
+
+<div class="ctx-pop" id="ctx-pop" hidden>
+  <div class="cp-top"><b id="cp-used">—</b><span id="cp-window"></span></div>
+  <div class="cp-bar" id="cp-bar"></div>
+  <div id="cp-rows"></div>
+</div>
 
 <div class="picker-pop" id="picker-pop" role="menu" hidden>
   <div class="pop-row">
