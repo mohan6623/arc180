@@ -35,6 +35,7 @@ async function api(path, opts) {
 document.querySelectorAll("[data-go]").forEach(btn => {
   btn.addEventListener("click", () => {
     const id = btn.dataset.go;
+    leaveThread();                          // any tab, including chat, lands on the list
     document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id));
     document.querySelectorAll(".tab[data-go],.sb-item[data-go],.chat-fab").forEach(b =>
       b.classList.toggle("active", b.dataset.go === id));
@@ -57,6 +58,7 @@ function render() {
 
   $("day-chip").innerHTML =
     `DAY <b>${pad3(t.day_n)}</b>/${t.plan_days} · 🔥 <b>${me.streak}</b>`;
+  $("thread-streak").innerHTML = `🔥 <b>${me.streak}</b>`;
   $("sb-av").textContent = IC();
   $("sb-name").textContent = cap(USER);
   if (S.kb_name) $("notes-eyebrow").textContent = `Two-way sync with ${S.kb_name}`;
@@ -493,35 +495,34 @@ function noteSwitch(text) {
   hint.classList.add("switching");
 }
 
-let showArchived = false;
+let showArchived = false, showAllConvos = false;
+const RECENT_N = 4;
 
 function convoRow(c) {
-  const sub = c.preview ? esc(c.preview) : `${c.count} messages`;
-  const badge = (c.provider || "claude").slice(0, 3).toUpperCase();
-  return `<div class="card convo ${c.archived ? "archived" : ""}" data-convo="${c.id}">` +
-    `<span class="prov ${esc(c.provider || "claude")}">${badge}</span>` +
-    `<span class="body"><span class="tt">${esc(c.title)}</span>` +
-    `<span class="snip">${sub}</span></span>` +
-    `<span class="meta"><span class="t">${esc((c.when || "").slice(5, 16).replace("T", " "))}</span>` +
-    `<span class="c">${c.count} msg${c.model ? " · " + esc(c.model) : ""}</span></span>` +
-    (c.archived ? `<button class="del" data-unarchive="${c.id}" title="Move back to sessions">↩</button>` : "") +
-    `<button class="del" data-del="${c.id}" title="Delete this session">×</button></div>`;
+  return `<button class="convo ${c.archived ? "archived" : ""}" data-convo="${c.id}">` +
+    `<span class="tt">${esc(c.title)}</span>` +
+    (c.archived ? `<span class="del" data-unarchive="${c.id}" title="Move back to sessions">↩</span>` : "") +
+    `<span class="del" data-del="${c.id}" title="Delete this session">×</span></button>`;
 }
 
 function renderChat() {
   renderChips();
   const all = S.convos || [];
   const live = all.filter(c => !c.archived), arch = all.filter(c => c.archived);
+  const shown = showAllConvos ? live : live.slice(0, RECENT_N);
 
-  let html = live.map(convoRow).join("") ||
+  let html = shown.map(convoRow).join("") ||
     `<div class="card empty-note">No sessions yet.<br>Ask something below — it starts a new one.</div>`;
-  if (arch.length) {
+  if (live.length > RECENT_N)
+    html += `<button class="see-all" id="see-all">${showAllConvos ? "Show fewer" : `All ${live.length} sessions`}</button>`;
+  if (arch.length && showAllConvos) {
     html += `<button class="arch-head ${showArchived ? "open" : ""}" id="arch-toggle">` +
       `Archived <span class="cnt">${arch.length}</span><span class="car">▼</span></button>` +
       (showArchived ? arch.map(convoRow).join("") : "");
   }
   $("convo-list").innerHTML = html;
 
+  $("see-all")?.addEventListener("click", () => { showAllConvos = !showAllConvos; renderChat(); });
   $("arch-toggle")?.addEventListener("click", () => { showArchived = !showArchived; renderChat(); });
 
   document.querySelectorAll("[data-convo]").forEach(b =>
@@ -556,13 +557,22 @@ async function setArchived(id, archived) {
   await refreshConvos();
 }
 
+const CTX_C = 2 * Math.PI * 13;   // the ring in the composer
+
 function renderContext(ctx) {
-  if (!ctx) return;
-  const fill = $("ctx-fill"), label = $("ctx-label");
-  fill.style.width = Math.max(2, ctx.pct) + "%";
-  fill.className = ctx.pct > 85 ? "hot" : ctx.pct > 60 ? "warn" : "";
-  label.textContent = `${ctx.pct}% of ${Math.round(ctx.window / 1000)}k`;
+  const dot = $("ctx-dot"), fg = $("ctx-fill");
+  if (!ctx) { dot.hidden = true; return; }
+  dot.hidden = false;
+  const pct = Math.min(100, Math.max(0, ctx.pct));
+  fg.style.strokeDasharray = CTX_C;
+  fg.style.strokeDashoffset = CTX_C * (1 - pct / 100);
+  fg.setAttribute("class", "fg " + (pct > 85 ? "hot" : pct > 60 ? "warn" : ""));
+  ctxLabel = `Context ${pct}% used of ${Math.round(ctx.window / 1000)}k`;
+  dot.title = ctxLabel;
 }
+
+let ctxLabel = "";
+$("ctx-dot").addEventListener("click", () => ctxLabel && toast(ctxLabel));
 
 function scrollToBottom(smooth) {
   const pane = $("thread-msgs");
@@ -592,14 +602,42 @@ function renderThread(c) {
   if (findQ) markHits(); else scrollToBottom(false);
 }
 
+/* on a phone the keyboard shrinks the visual viewport — keep the composer above it */
+const PHONE = matchMedia("(max-width:899px)");
+function fitThread() {
+  const el = $("chat-thread"), vv = window.visualViewport;
+  if (!vv || !PHONE.matches || !document.body.classList.contains("in-thread")) {
+    el.style.height = ""; return;
+  }
+  el.style.height = vv.height + "px";
+}
+window.visualViewport?.addEventListener("resize", fitThread);
+
+function enterThread() {
+  $("chat-history").style.display = "none";
+  $("chat-thread").style.display = "flex";
+  document.body.classList.add("in-thread");
+  fitThread();
+}
+
+function leaveThread() {
+  if (!currentConvo && !document.body.classList.contains("in-thread")) return;
+  currentConvo = null;
+  closeFind();
+  closePops();
+  $("chat-thread").style.display = "none";
+  $("chat-history").style.display = "block";
+  document.body.classList.remove("in-thread");
+  fitThread();
+}
+
 async function openConvo(id) {
   const c = await api(`/api/convo?id=${id}`);
   currentConvo = id;
   provider = c.provider || provider;
   model = c.model || "";
   effort = c.effort || "";
-  $("chat-history").style.display = "none";
-  $("chat-thread").style.display = "block";
+  enterThread();
   renderChips();
   noteSwitch("");
   renderThread(c);
@@ -608,12 +646,7 @@ async function openConvo(id) {
 /* ---------------- kebab menu: rename, find, archive, delete ---------------- */
 let lastConvo = null;
 
-$("back-to-history").addEventListener("click", () => {
-  currentConvo = null;
-  closeFind();
-  $("chat-thread").style.display = "none";
-  $("chat-history").style.display = "block";
-});
+$("back-to-history").addEventListener("click", leaveThread);
 
 document.querySelector("[data-more]").addEventListener("click", e => {
   e.stopPropagation();
@@ -735,13 +768,13 @@ async function sendChat(inputEl, convoId) {
   const who = labelFor(provider) + (model ? ` · ${model}` : "");
   const thinking = `<div class="msg user">${esc(message)}</div>` +
     `<div class="msg bot thinking">${esc(who)} is thinking…</div>`;
-  if (convoId && convoId !== "pending") {
+  const waitingIn = convoId && convoId !== "pending" ? convoId : "pending";
+  if (waitingIn !== "pending") {
     $("thread-msgs").insertAdjacentHTML("beforeend", thinking);
   } else {
     currentConvo = "pending";
     closeFind();
-    $("chat-history").style.display = "none";
-    $("chat-thread").style.display = "block";
+    enterThread();
     $("thread-title").textContent = draftTitle(message);
     renderChips();
     $("thread-msgs").innerHTML = thinking;
@@ -758,9 +791,11 @@ async function sendChat(inputEl, convoId) {
         message, convo_id: (convoId && convoId !== "pending") ? convoId : undefined,
       }),
     });
-    currentConvo = r.convo_id;
-    await openConvo(r.convo_id);
+    // only pull the answer into view if you're still standing in that thread
+    const stillHere = currentConvo === waitingIn || currentConvo === r.convo_id;
+    if (stillHere) await openConvo(r.convo_id);
     await refreshConvos();
+    if (!stillHere) toast("Reply ready in “" + (S.convos.find(c => c.id === r.convo_id)?.title || "your session") + "”");
   } catch (e) {
     toast("Chat failed: " + e.message);
     document.querySelector(".msg.thinking")?.remove();
