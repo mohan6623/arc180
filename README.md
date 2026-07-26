@@ -27,10 +27,18 @@ machine, against their own clone, using their own AI subscriptions. Nobody's
 laptop is a dependency for anybody else, and AI chat logs never leave the machine
 that produced them.
 
-**Only the scoreboard is shared.** A single Supabase table holds who finished which
-day. That is the entire cloud surface — small enough to sync in under a second over
-a websocket, and nothing private in it. Knowledge travels the way it already did:
-through git.
+**Only pointers are shared.** Supabase holds two small tables: who finished which day,
+and a doorbell row saying "I just pushed, here's my HEAD". That is the entire cloud
+surface, and nothing private is in it. The knowledge itself travels the way it always
+did — through git.
+
+**Sync is event-driven, never scheduled.** A daily-check cron loses whatever you wrote
+in the afternoon. Instead the server watches the knowledge base, and about two minutes
+after it stops changing it commits, pulls with rebase, and pushes — then rings the
+doorbell so the other machine pulls at once instead of waiting for a timer. Conflicts
+are never auto-resolved: the rebase is aborted, the app shows a banner, and a human
+decides. If the knowledge base's own pre-commit checks reject the commit, syncing
+pauses and surfaces the error rather than forcing it through.
 
 ```mermaid
 flowchart LR
@@ -144,6 +152,13 @@ Google's Open Knowledge Format — one concept per markdown file, small YAML
 frontmatter, links as plain markdown. Any repo following that shape will work;
 the parsers are in `load_schedule()` and `load_progress()`.
 
+Two details the app respects rather than fights. The roster is simply whichever
+`people/<name>/` folders exist, so nobody configures names and both machines always
+agree — and no scoreboard value is positional, so there is no slot to claim. Notes
+are written with OKF frontmatter (`type: progress`, reusing the knowledge base's own
+vocabulary rather than inventing one) so they pass the repo's lint on commit; the
+editor shows only the body and preserves any frontmatter you add by hand.
+
 ---
 
 ## Scoring
@@ -158,12 +173,10 @@ owned by whatever ritual maintains the knowledge base.
 ## Status
 
 Working: curriculum parsing, claims, streaks, XP, calendar, arena, two-way notes,
-AI chat with persistent sessions, Supabase scoreboard with realtime updates, PWA
-install and offline shell.
+AI chat with persistent sessions, Supabase scoreboard with realtime updates,
+event-driven git sync of the knowledge base, PWA install and offline shell.
 
-Planned: event-driven git auto-sync (commit and push knowledge changes minutes after
-they happen, with a Supabase row as the doorbell that tells the other machine to
-pull), a week-in-review screen, and editing progress subtasks from the app.
+Planned: a week-in-review screen, and editing progress subtasks from the app.
 
 ## License
 

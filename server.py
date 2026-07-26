@@ -51,9 +51,20 @@ KB = Path(os.environ.get("ARC180_KB") or _conf.get("kb_path") or (ROOT.parent / 
 KB_NAME = KB.name
 PORT = int(os.environ.get("ARC180_PORT") or _conf.get("port") or 8990)
 
-# Exactly two learners duel. Names must match the people/<name>/ folders in the
-# knowledge base and the `user:` value in its whoami file.
-USERS = list(_conf.get("users") or ["learner-a", "learner-b"])[:2]
+def roster_from_kb():
+    """The two learners are whoever has a people/<name>/ folder in the shared
+    knowledge base. Deriving it means nobody configures names, and both
+    machines always agree — order carries no meaning anywhere in the app."""
+    people = KB / "people"
+    if not people.is_dir():
+        return []
+    return sorted(p.name for p in people.iterdir()
+                  if p.is_dir() and not p.name.startswith(("_", ".")))
+
+
+# `users` in the config is an optional override; normally the roster is read
+# from the knowledge base both machines share.
+USERS = list(_conf.get("users") or roster_from_kb() or ["learner-a", "learner-b"])
 if len(USERS) < 2:
     USERS = (USERS + ["learner-a", "learner-b"])[:2]
 
@@ -293,15 +304,44 @@ def note_path(user, iso):
     return KB / "people" / user / "notes" / f"{iso}.md"
 
 
+FM_RE = re.compile(r"^---\n(.*?)\n---\n+", re.S)
+
+
+def split_frontmatter(text):
+    """-> (frontmatter block including delimiters, body). Either may be ''."""
+    m = FM_RE.match(text)
+    return (m.group(0), text[m.end():]) if m else ("", text)
+
+
+def default_frontmatter(user, iso):
+    """Knowledge bases following OKF require `type:` on every page, and the
+    vocabulary is the KB's to define — `progress` is its existing type for
+    per-person day state, so notes reuse it rather than inventing one."""
+    return (f"---\n"
+            f"type: progress\n"
+            f'title: "Notes — {iso}"\n'
+            f'description: "Working notes captured while studying on {iso}."\n'
+            f"tags: [notes]\n"
+            f"person: {user}\n"
+            f"timestamp: {iso}\n"
+            f"---\n\n")
+
+
 def read_note(user, iso):
+    """Only the body — the app edits prose, not frontmatter."""
     p = note_path(user, iso)
-    return p.read_text(encoding="utf-8") if p.exists() else ""
+    return split_frontmatter(p.read_text(encoding="utf-8"))[1] if p.exists() else ""
 
 
-def write_note(user, iso, content):
+def write_note(user, iso, body):
+    """Write the body back under existing frontmatter, or a sensible default.
+    Whatever the author added by hand is preserved untouched."""
     p = note_path(user, iso)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
+    existing = p.read_text(encoding="utf-8") if p.exists() else ""
+    fm = split_frontmatter(existing)[0] or default_frontmatter(user, iso)
+    body = body.rstrip() + "\n"
+    p.write_text(fm + body, encoding="utf-8")
 
 
 def recent_notes(user, limit=6):
@@ -514,13 +554,14 @@ def build_state(user):
         if w["week"] in seen or w["week"] == 0:
             continue
         seen.add(w["week"])
-        m_xp = week_xp(stats[USERS[0]]["done"], schedule, w["week"])
-        a_xp = week_xp(stats[USERS[1]]["done"], schedule, w["week"])
         started = any(s["week"] == w["week"] and s_date <= iso
                       for s_date, s in schedule.items())
         if not started:
             continue
-        duels.append({"week": w["week"], "title": w["title"], "m": m_xp, "a": a_xp,
+        # keyed by name, never by position — each client looks up its own side
+        duels.append({"week": w["week"], "title": w["title"],
+                      "scores": {u: week_xp(stats[u]["done"], schedule, w["week"])
+                                 for u in USERS},
                       "live": cur_week == w["week"]})
 
     chats = load_chats()
@@ -544,7 +585,7 @@ def build_state(user):
         "providers": providers_available(),
         "cloud": {"connected": cloud_ok, "url": SUPABASE_URL, "anon_key": SUPABASE_KEY},
         "kb_name": KB_NAME,
-        "users_order": USERS,
+        "sync": dict(_sync),
         "plan": {"start": PLAN_START.isoformat(), "days": PLAN_DAYS,
                  "progress_pct": {u: round(100 * len(stats[u]["done"]) / PLAN_DAYS, 1)
                                   for u in USERS}},
@@ -677,6 +718,139 @@ def lan_ip():
         return "127.0.0.1"
 
 
+# ----------------------------------------------------------------- kb sync --
+# Event-driven, not scheduled: commit + push a couple of minutes after the
+# knowledge base stops changing, then ring a doorbell in Supabase so the other
+# machine pulls immediately instead of waiting for a timer.
+SYNC_CONF = _conf.get("kb_sync") or {}
+SYNC_ENABLED = SYNC_CONF.get("enabled", True)
+SYNC_IDLE = int(SYNC_CONF.get("idle_seconds", 120))
+SYNC_POLL = int(SYNC_CONF.get("poll_seconds", 20))
+
+_sync = {"enabled": SYNC_ENABLED, "state": "starting", "dirty": 0,
+         "last_push": None, "last_pull": None, "error": None}
+_seen_heads = {}
+_blocked_sig = None
+
+
+def _stamp():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def git_kb(*args, timeout=180):
+    r = subprocess.run(["git", *args], cwd=str(KB), capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL, timeout=timeout,
+                       encoding="utf-8", errors="replace")
+    return r.returncode, (r.stdout or "").strip(), (r.stderr or "").strip()
+
+
+def kb_head():
+    return git_kb("rev-parse", "HEAD")[1][:12]
+
+
+def kb_dirty():
+    return [l for l in git_kb("status", "--porcelain")[1].splitlines() if l.strip()]
+
+
+def kb_ahead():
+    out = git_kb("rev-list", "--count", "@{u}..HEAD")[1]
+    return int(out) if out.isdigit() else 0
+
+
+def kb_pull():
+    code, out, err = git_kb("pull", "--rebase", "--autostash")
+    if code != 0:
+        git_kb("rebase", "--abort")          # never leave the KB mid-rebase
+        _sync.update(state="conflict", error=(err or out)[:400])
+        return False
+    if _sync["state"] in ("conflict", "error"):
+        _sync["state"] = "idle"
+    _sync.update(last_pull=_stamp(), error=None)
+    return True
+
+
+def ring_doorbell(user):
+    """One tiny row telling the other machine there is something to pull."""
+    if not CLOUD_ENABLED:
+        return
+    try:
+        supa("POST", "kb_sync?on_conflict=username",
+             [{"username": user, "head": kb_head(),
+               "pushed_at": datetime.now().astimezone().isoformat()}])
+    except (urllib.error.URLError, OSError, json.JSONDecodeError):
+        pass
+
+
+def kb_commit_push(user):
+    global _blocked_sig
+    files = kb_dirty()
+    if files:
+        git_kb("add", "-A")
+        msg = f"sync: {len(files)} file(s) from {user} · {datetime.now():%Y-%m-%d %H:%M}"
+        code, out, err = git_kb("commit", "-m", msg)
+        if code != 0 and "nothing to commit" not in (out + err).lower():
+            # the knowledge base's own pre-commit hook refused — a human decides
+            _blocked_sig = "\n".join(sorted(files))
+            _sync.update(state="blocked", error=(err or out)[:400])
+            return False
+    if not kb_pull():
+        return False
+    if kb_ahead():
+        code, out, err = git_kb("push")
+        if code != 0:
+            _sync.update(state="error", error=(err or out)[:400])
+            return False
+        _sync.update(last_push=_stamp())
+        ring_doorbell(user)
+    _sync.update(state="idle", error=None)
+    return True
+
+
+def sync_loop():
+    global _blocked_sig
+    if not (KB / ".git").exists():
+        _sync.update(enabled=False, state="off", error="knowledge base is not a git repo")
+        return
+    user = whoami()
+    kb_pull()
+    _sync["state"] = "idle"
+    last_sig, quiet_since = None, 0.0
+    while True:
+        try:
+            files = kb_dirty()
+            sig = "\n".join(sorted(files))
+            _sync["dirty"] = len(files)
+            if files or kb_ahead():
+                if sig and sig == _blocked_sig:
+                    pass                      # wait for a human to fix it
+                elif sig != last_sig:
+                    last_sig, quiet_since = sig, time.time()
+                    _blocked_sig = None
+                elif time.time() - quiet_since >= SYNC_IDLE:
+                    kb_commit_push(user)
+                    last_sig, quiet_since = None, 0.0
+            else:
+                last_sig = None
+                for row in (cloud_kb_rows() or []):
+                    if row.get("username") == user:
+                        continue
+                    if _seen_heads.get(row["username"]) != row.get("head"):
+                        _seen_heads[row["username"]] = row.get("head")
+                        kb_pull()
+        except Exception as exc:                      # never kill the daemon
+            _sync.update(error=f"{type(exc).__name__}: {exc}"[:200])
+        time.sleep(SYNC_POLL)
+
+
+def cloud_kb_rows():
+    if not CLOUD_ENABLED:
+        return []
+    try:
+        return supa("GET", "kb_sync?select=*") or []
+    except (urllib.error.URLError, OSError, json.JSONDecodeError):
+        return []
+
+
 def keep_alive():
     """Free Supabase projects pause after ~7 idle days (it happened on 2026-07-18
     → 07-26 and took the scoreboard offline). A cheap ping every 6h prevents it."""
@@ -688,7 +862,21 @@ def keep_alive():
 if __name__ == "__main__":
     DATA.mkdir(exist_ok=True)
     threading.Thread(target=keep_alive, daemon=True).start()
-    srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    if SYNC_ENABLED:
+        threading.Thread(target=sync_loop, daemon=True).start()
+    else:
+        _sync.update(state="off")
+    # Without this, Windows happily lets a second instance bind the same port and
+    # silently shadow the first — you then debug a server that isn't serving you.
+    class Server(ThreadingHTTPServer):
+        allow_reuse_address = False
+
+    try:
+        srv = Server(("0.0.0.0", PORT), Handler)
+    except OSError as exc:
+        if sys.stdout:
+            print(f"ARC/180 is already running on port {PORT} ({exc}).")
+        raise SystemExit(1)
     if sys.stdout:  # absent under pythonw.exe (the hidden autostart)
         print("ARC/180 running:")
         print(f"  PC     -> http://localhost:{PORT}")

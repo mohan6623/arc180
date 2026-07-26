@@ -160,6 +160,7 @@ function render() {
   renderArena();
   renderNotes();
   renderChat();
+  renderSync();
 }
 
 /* ---------------- calendar ---------------- */
@@ -214,10 +215,9 @@ function renderCalendar() {
 function renderArena() {
   const me = S.users[USER], rv = S.users[RIVAL];
   const duels = S.duels || [];
-  // duel scores arrive keyed to the configured player order; flip to the viewer's side
-  const first = S.users_order ? S.users_order[0] : USER;
-  const mine = d => (USER === first ? d.m : d.a);
-  const theirs = d => (USER === first ? d.a : d.m);
+  // duel scores are keyed by name, so each viewer is always their own side
+  const mine = d => (d.scores?.[USER] ?? 0);
+  const theirs = d => (d.scores?.[RIVAL] ?? 0);
 
   let meWon = 0, rvWon = 0;
   duels.forEach(d => { if (!d.live) { if (mine(d) > theirs(d)) meWon++; else if (theirs(d) > mine(d)) rvWon++; } });
@@ -441,9 +441,40 @@ async function refreshState() {
   if (!rivalHadClaimed && rivalNowClaimed) toast(`${cap(RIVAL)} just claimed today ⚔️`);
 }
 
-function startRealtime() {
+function renderSync() {
+  const sy = S.sync || {};
   const label = $("sb-sync-label");
-  if (label) label.textContent = S.cloud?.connected ? "Supabase · synced" : "Local only · cloud offline";
+  const cloud = S.cloud?.connected ? "Supabase · synced" : "Local only · cloud offline";
+  const text = {
+    idle: sy.dirty ? `KB · ${sy.dirty} change${sy.dirty > 1 ? "s" : ""} pending`
+                   : (sy.last_push ? "KB · pushed " + sy.last_push.slice(11, 16) : "KB · in sync"),
+    conflict: "KB · conflict — needs you",
+    blocked: "KB · commit blocked",
+    error: "KB · sync error",
+    starting: "KB · starting…",
+    off: "KB sync off",
+  }[sy.state] || "KB · —";
+  if (label) label.textContent = `${cloud} · ${text}`;
+
+  const banner = $("sync-banner");
+  if (!banner) return;
+  if (sy.state === "conflict" || sy.state === "blocked" || sy.state === "error") {
+    banner.style.display = "block";
+    const what = sy.state === "conflict"
+      ? "Your knowledge base and your rival's have diverged and can't be merged automatically."
+      : sy.state === "blocked"
+        ? "The knowledge base refused the commit — its own pre-commit check failed."
+        : "The knowledge base could not sync.";
+    banner.innerHTML = `<strong>Sync needs you.</strong> ${esc(what)} ` +
+      `Nothing was forced or discarded — resolve it in the repo, and syncing resumes on its own.` +
+      (sy.error ? `<pre>${esc(sy.error)}</pre>` : "");
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+function startRealtime() {
+  renderSync();
   // live push: any scoreboard change -> refetch. Fallback poll covers offline gaps.
   if (S.cloud?.connected && window.supabase) {
     try {
