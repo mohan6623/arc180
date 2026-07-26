@@ -8,8 +8,9 @@ const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const IC = () => cap(USER)[0], RIC = () => cap(RIVAL)[0];
 let provider = "claude";    // source for the next message
 let model = "";             // "" = that source's default model
+let effort = "";            // "" = that source's default reasoning effort
 let currentConvo = null;
-const MODELS = {};          // provider -> model list, fetched once
+const CAPS = {};            // provider -> {models, efforts}, fetched once
 let localChecks = [];       // local check state when the KB has no subtasks yet
 
 const $ = id => document.getElementById(id);
@@ -328,49 +329,118 @@ $("note-text").addEventListener("input", () => {
 });
 
 /* ---------------- chat ---------------- */
+/* ---------------- source / model / effort picker ---------------- */
 function labelFor(p) {
   return { claude: "Claude", codex: "Codex", antigravity: "Antigravity", cursor: "Cursor" }[p] || p;
 }
 
-/* provider + model pickers ------------------------------------------------ */
-function fillProviders(sel, chosen) {
-  sel.innerHTML = Object.keys(S.providers || {}).map(p => {
-    const ok = S.providers[p];
-    return `<option value="${p}" ${ok ? "" : "disabled"} ${p === chosen ? "selected" : ""}>` +
-           `${labelFor(p)}${ok ? "" : " — not installed"}</option>`;
-  }).join("");
+function shortModel(m) {
+  if (!m) return "";
+  return m.replace(/^gemini-/, "").replace(/-/g, " ")
+          .replace(/\b\w/g, c => c.toUpperCase());
 }
 
-async function fillModels(sel, prov, chosen) {
-  sel.innerHTML = `<option>loading…</option>`;
-  sel.disabled = true;
-  let models = MODELS[prov];
-  if (!models) {
-    try {
-      models = (await api(`/api/models?provider=${prov}`)).models || [];
-      MODELS[prov] = models;
-    } catch { models = []; }
+function chipText() {
+  const bits = [labelFor(provider)];
+  if (model) bits.push(shortModel(model));
+  if (effort) bits.push(effort.charAt(0).toUpperCase() + effort.slice(1));
+  return bits.join(" · ");
+}
+
+function renderChips() {
+  const t = chipText();
+  const a = $("new-chip-label"), b = $("thread-chip-label");
+  if (a) a.textContent = t;
+  if (b) b.textContent = t;
+}
+
+async function capabilities(prov) {
+  if (!CAPS[prov]) {
+    try { CAPS[prov] = await api(`/api/models?provider=${prov}`); }
+    catch { CAPS[prov] = { models: [], efforts: [] }; }
   }
-  sel.innerHTML = [`<option value="">Default model</option>`]
-    .concat(models.map(m => `<option value="${esc(m)}" ${m === chosen ? "selected" : ""}>${esc(m)}</option>`))
-    .join("");
-  sel.disabled = false;
+  return CAPS[prov];
+}
+
+async function fillPicker() {
+  const ps = $("pick-provider"), ms = $("pick-model"), es = $("pick-effort");
+  ps.innerHTML = Object.keys(S.providers || {}).map(p =>
+    `<option value="${p}" ${S.providers[p] ? "" : "disabled"} ${p === provider ? "selected" : ""}>` +
+    `${labelFor(p)}${S.providers[p] ? "" : " — not installed"}</option>`).join("");
+
+  const caps = await capabilities(provider);
+  ms.innerHTML = [`<option value="">Default</option>`].concat(
+    (caps.models || []).map(m =>
+      `<option value="${esc(m)}" ${m === model ? "selected" : ""}>${esc(shortModel(m))}</option>`)).join("");
+  ms.disabled = !(caps.models || []).length;
+
+  es.innerHTML = [`<option value="">Default</option>`].concat(
+    (caps.efforts || []).map(e =>
+      `<option value="${e}" ${e === effort ? "selected" : ""}>` +
+      `${e.charAt(0).toUpperCase() + e.slice(1)}</option>`)).join("");
+  es.disabled = !(caps.efforts || []).length;
+  renderChips();
+}
+
+function closePicker() { $("picker-pop").hidden = true; }
+
+async function openPicker(anchor) {
+  const pop = $("picker-pop");
+  await fillPicker();
+  pop.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  const h = pop.offsetHeight, w = pop.offsetWidth;
+  // open upwards when there isn't room below — the chip sits near the bottom
+  const top = r.top - h - 8 > 8 ? r.top - h - 8 : Math.min(r.bottom + 8, innerHeight - h - 8);
+  pop.style.top = Math.max(8, top) + "px";
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+}
+
+document.querySelectorAll("[data-picker]").forEach(btn =>
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    if (!$("picker-pop").hidden) return closePicker();
+    openPicker(btn);
+  }));
+
+document.addEventListener("click", e => {
+  if (!$("picker-pop").contains(e.target)) closePicker();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePicker(); });
+
+$("pick-provider").addEventListener("change", async e => {
+  provider = e.target.value;
+  model = ""; effort = "";
+  await fillPicker();
+  noteSwitch(`Next message goes to ${labelFor(provider)}`);
+});
+$("pick-model").addEventListener("change", e => {
+  model = e.target.value;
+  renderChips();
+  noteSwitch(model ? `Switching to ${shortModel(model)}` : "");
+});
+$("pick-effort").addEventListener("change", e => {
+  effort = e.target.value;
+  renderChips();
+});
+$("pick-reset").addEventListener("click", async () => {
+  model = ""; effort = "";
+  await fillPicker();
+  noteSwitch("");
+});
+
+function noteSwitch(text) {
+  const hint = $("switch-hint");
+  if (!hint) return;
+  if (!text || !currentConvo || currentConvo === "pending") {
+    hint.textContent = ""; hint.classList.remove("switching"); return;
+  }
+  hint.textContent = text + " — it receives this conversation";
+  hint.classList.add("switching");
 }
 
 function renderChat() {
-  const np = $("new-provider");
-  if (np && !np.dataset.ready) {
-    fillProviders(np, provider);
-    fillModels($("new-model"), provider, model);
-    np.dataset.ready = "1";
-    np.addEventListener("change", () => {
-      provider = np.value;
-      model = "";
-      fillModels($("new-model"), provider, "");
-    });
-    $("new-model").addEventListener("change", () => { model = $("new-model").value; });
-  }
-
+  renderChips();
   $("convo-list").innerHTML = (S.convos || []).map(c => {
     const sub = c.preview ? esc(c.preview) : `${c.count} messages`;
     const badge = (c.provider || "claude").slice(0, 3).toUpperCase();
@@ -413,7 +483,8 @@ function renderThread(c) {
   $("thread-title").textContent = c.title || "Session";
   $("thread-msgs").innerHTML = c.messages.map(m => {
     if (m.role === "user") return `<div class="msg user">${esc(m.text)}</div>`;
-    const who = labelFor(m.provider || c.provider) + (m.model ? ` · ${m.model}` : "");
+    const who = labelFor(m.provider || c.provider) + (m.model ? ` · ${shortModel(m.model)}` : "")
+      + (m.effort ? ` · ${m.effort}` : "");
     const moved = m.switched ? `<div class="switch-note">context handed to ${esc(who)}</div>` : "";
     return moved + `<div class="msg bot ${m.ok === false ? "err" : ""}">` +
       `<div class="from">${esc(who)} · grounded in the KB</div>${esc(m.text)}</div>`;
@@ -426,21 +497,11 @@ async function openConvo(id) {
   currentConvo = id;
   provider = c.provider || provider;
   model = c.model || "";
+  effort = c.effort || "";
   $("chat-history").style.display = "none";
   $("chat-thread").style.display = "block";
-  const tp = $("thread-provider"), tm = $("thread-model");
-  fillProviders(tp, provider);
-  await fillModels(tm, provider, model);
-  tp.onchange = async () => {
-    provider = tp.value;
-    model = "";
-    await fillModels(tm, provider, "");
-    toast(`Next message goes to ${labelFor(provider)} — it receives the whole conversation`);
-  };
-  tm.onchange = () => {
-    model = tm.value;
-    if (model) toast(`Switched to ${model} — the conversation carries over`);
-  };
+  renderChips();
+  noteSwitch("");
   renderThread(c);
 }
 
@@ -483,8 +544,7 @@ async function sendChat(inputEl, convoId) {
     $("chat-history").style.display = "none";
     $("chat-thread").style.display = "block";
     $("thread-title").textContent = message.slice(0, 60);
-    fillProviders($("thread-provider"), provider);
-    fillModels($("thread-model"), provider, model);
+    renderChips();
     $("thread-msgs").innerHTML = thinking;
   }
   $("thread-send").disabled = true;
@@ -493,7 +553,7 @@ async function sendChat(inputEl, convoId) {
     const r = await api("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user: USER, provider, model: model || undefined,
+        user: USER, provider, model: model || undefined, effort: effort || undefined,
         message, convo_id: (convoId && convoId !== "pending") ? convoId : undefined,
       }),
     });

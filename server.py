@@ -412,6 +412,13 @@ STATIC_MODELS = {
     "codex": ["gpt-5-codex", "gpt-5", "o3"],
     "cursor": ["auto", "claude-4.5-sonnet", "gpt-5"],
 }
+# How hard the model is asked to think. Each CLI spells it differently.
+EFFORTS = {
+    "claude": ["low", "medium", "high", "xhigh", "max"],
+    "codex": ["low", "medium", "high"],
+    "antigravity": ["low", "medium", "high"],
+    "cursor": [],
+}
 _model_cache = {}
 
 
@@ -535,7 +542,7 @@ def build_handoff(messages, message, model):
             f"\n\nContinue that conversation. The next message is:\n{message}")
 
 
-def run_chat(provider, message, session, model=None, handoff=None):
+def run_chat(provider, message, session, model=None, handoff=None, effort=None):
     """Send one message. `session` is this provider's CLI session for the
     conversation, or None to start a fresh one (replaying `handoff` if given).
 
@@ -555,6 +562,8 @@ def run_chat(provider, message, session, model=None, handoff=None):
                 "--allowedTools", "Read,Glob,Grep"]
         if model:
             argv += ["--model", model]
+        if effort:
+            argv += ["--effort", effort]
         if first:
             argv += ["--session-id", sid]
             if not handoff:
@@ -569,6 +578,8 @@ def run_chat(provider, message, session, model=None, handoff=None):
         # (codex-windows-sandbox-setup.exe), so any sandboxed tool call fails;
         # danger-full-access skips the sandbox entirely. Local, personal use.
         model_flag = ["-m", model] if model else []
+        if effort:
+            model_flag += ["-c", f'model_reasoning_effort="{effort}"']
         if first:
             ok, out = _exec([exe, "exec", "--json", "--sandbox",
                              "danger-full-access", *model_flag, prompt])
@@ -599,6 +610,8 @@ def run_chat(provider, message, session, model=None, handoff=None):
         flags = ["--sandbox", "--dangerously-skip-permissions"]
         if model:
             flags += ["--model", model]
+        if effort:
+            flags += ["--effort", effort]
         if first:
             with _agy_lock:
                 before = _agy_convos()
@@ -694,6 +707,7 @@ def build_state(user):
     chats = load_chats()
     convo_meta = [{"id": c["id"], "title": c["title"],
                    "provider": c.get("provider", "claude"), "model": c.get("model"),
+                   "effort": c.get("effort"),
                    "when": c.get("updated", ""), "count": len(c["messages"]),
                    "preview": next((m["text"] for m in reversed(c["messages"])
                                     if m["role"] == "assistant"), "")[:110]}
@@ -771,9 +785,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/models":
             prov = q.get("provider")
             if prov:
-                return self._json({"models": provider_models(prov)})
-            return self._json({p: provider_models(p) for p in PROVIDERS
-                               if shutil.which(PROVIDER_BIN[p])})
+                return self._json({"models": provider_models(prov),
+                                   "efforts": EFFORTS.get(prov, [])})
+            return self._json({p: {"models": provider_models(p),
+                                   "efforts": EFFORTS.get(p, [])}
+                               for p in PROVIDERS if shutil.which(PROVIDER_BIN[p])})
         if u.path == "/":
             return self._static("index.html")
         return self._static(u.path)
@@ -828,6 +844,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "empty message"}, 400)
             provider = body.get("provider") or "claude"
             model = body.get("model") or None
+            effort = body.get("effort") or None
             if provider not in PROVIDERS:
                 return self._json({"error": "unknown provider"}, 400)
 
@@ -847,7 +864,8 @@ class Handler(BaseHTTPRequestHandler):
             handoff = build_handoff(history, message, model) if switched else None
 
             ok, reply, session = run_chat(provider, message, session,
-                                          model=model, handoff=handoff)
+                                          model=model, handoff=handoff,
+                                          effort=effort)
 
             with _lock:
                 chats = load_chats()
@@ -862,12 +880,13 @@ class Handler(BaseHTTPRequestHandler):
                     convo["sessions"][key] = session
                 convo["provider"] = provider
                 convo["model"] = model
+                convo["effort"] = effort
                 convo["messages"].append(
                     {"role": "user", "text": message,
                      "ts": datetime.now().isoformat(timespec="seconds")})
                 convo["messages"].append(
                     {"role": "assistant", "text": reply, "ok": ok,
-                     "provider": provider, "model": model,
+                     "provider": provider, "model": model, "effort": effort,
                      "switched": bool(switched),
                      "ts": datetime.now().isoformat(timespec="seconds")})
                 convo["updated"] = datetime.now().isoformat(timespec="seconds")

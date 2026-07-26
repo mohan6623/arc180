@@ -260,8 +260,35 @@ main{padding:0 16px 130px}
   max-width:100%;text-overflow:ellipsis}
 .picker select:hover{border-color:var(--faint)}
 .picker select:disabled{opacity:.4;cursor:not-allowed}
+/* composer: the model picker lives with the message box, like Codex and Claude Code */
+.composer{margin-top:14px}
+.composer .chat-input{margin-top:0}
+.composer-bar{display:flex;align-items:center;gap:11px;padding:9px 4px 0}
+.model-chip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
+  color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:7px 13px}
+.model-chip:hover{border-color:var(--faint)}
+.model-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--purple);flex:none}
+.model-chip .caret{color:var(--faint);font-size:10px}
+.composer-hint{font-size:11px;color:var(--faint)}
+.composer-hint.switching{color:var(--yellow)}
+.picker-pop{position:fixed;z-index:60;min-width:250px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.55);padding:8px}
+.picker-pop[hidden]{display:none}
+.pop-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:9px}
+.pop-row:hover{background:var(--card-2)}
+.pop-row label{font-size:12.5px;font-weight:600;color:var(--muted);flex:none;width:52px}
+.pop-row select{flex:1;min-width:0;appearance:none;background:transparent;border:none;color:var(--ink);
+  font-family:var(--sans);font-size:12.5px;font-weight:600;text-align:right;cursor:pointer;
+  padding-right:16px;text-overflow:ellipsis;
+  background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);
+  background-position:calc(100% - 6px) 55%,calc(100% - 1px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.pop-row select:disabled{opacity:.35;cursor:not-allowed}
+.pop-row select option{background:var(--card);color:var(--ink)}
+.pop-reset{width:100%;text-align:left;font-size:12px;color:var(--muted);padding:9px 10px;border-radius:9px;
+  border-top:1px solid var(--line-soft);margin-top:4px}
+.pop-reset:hover{background:var(--card-2);color:var(--ink)}
 .thread-head{padding:15px 17px;margin-bottom:12px}
-.thread-title-row{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.thread-title-row{display:flex;align-items:center;gap:12px}
 .thread-title-row h2{font-size:16px;font-weight:700;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .icon-btn{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);
   border-radius:99px;padding:6px 13px;flex:none}
@@ -482,21 +509,19 @@ main{padding:0 16px 130px}
         <p>Every conversation you've had, with any brain — answers cite your wiki files.</p>
       </div>
       <div id="chat-history">
-        <div class="chat-toolbar">
-          <div class="picker">
-            <label for="new-provider">Source</label>
-            <select id="new-provider"></select>
-          </div>
-          <div class="picker">
-            <label for="new-model">Model</label>
-            <select id="new-model"></select>
-          </div>
-        </div>
         <div class="convo-list" id="convo-list"></div>
         <p class="kb-note">Runs headless (<code>claude -p</code> / <code>codex exec</code> / <code>agy -p</code>) on this PC against the KB — your existing subscriptions, no extra API bill. Each conversation is one persistent session; answers can take a minute or two because they read the actual wiki files.</p>
-        <div class="chat-input">
-          <input type="text" id="new-chat-input" placeholder="Ask the knowledge base anything…" aria-label="Ask the knowledge base">
-          <button id="new-chat-send">Ask</button>
+        <div class="composer">
+          <div class="chat-input">
+            <input type="text" id="new-chat-input" placeholder="Ask the knowledge base anything…" aria-label="Ask the knowledge base">
+            <button id="new-chat-send">Ask</button>
+          </div>
+          <div class="composer-bar">
+            <button class="model-chip" data-picker="new" aria-haspopup="menu">
+              <span class="dot"></span><span id="new-chip-label">Claude</span><span class="caret">▾</span>
+            </button>
+            <span class="composer-hint">starts a new session</span>
+          </div>
         </div>
       </div>
       <div id="chat-thread" style="display:none">
@@ -504,27 +529,25 @@ main{padding:0 16px 130px}
         <div class="thread-head card">
           <div class="thread-title-row">
             <h2 id="thread-title">…</h2>
-            <button class="icon-btn" id="rename-convo" title="Rename this session">Rename</button>
-          </div>
-          <div class="thread-controls">
-            <div class="picker">
-              <label for="thread-provider">Source</label>
-              <select id="thread-provider"></select>
-            </div>
-            <div class="picker">
-              <label for="thread-model">Model</label>
-              <select id="thread-model"></select>
-            </div>
-            <div class="ctx-meter" id="ctx-meter" title="Context used">
+            <div class="ctx-meter" id="ctx-meter" title="Context window used">
               <div class="ctx-bar"><span id="ctx-fill"></span></div>
               <span id="ctx-label">—</span>
             </div>
+            <button class="icon-btn" id="rename-convo" title="Rename this session">Rename</button>
           </div>
         </div>
         <article class="card chat-thread" id="thread-msgs"></article>
-        <div class="chat-input">
-          <input type="text" id="thread-input" placeholder="Continue this conversation…" aria-label="Message">
-          <button id="thread-send">Send</button>
+        <div class="composer">
+          <div class="chat-input">
+            <input type="text" id="thread-input" placeholder="Continue this conversation…" aria-label="Message">
+            <button id="thread-send">Send</button>
+          </div>
+          <div class="composer-bar">
+            <button class="model-chip" data-picker="thread" aria-haspopup="menu">
+              <span class="dot"></span><span id="thread-chip-label">Claude</span><span class="caret">▾</span>
+            </button>
+            <span class="composer-hint" id="switch-hint"></span>
+          </div>
         </div>
       </div>
     </section>
@@ -550,6 +573,22 @@ main{padding:0 16px 130px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
   </button>
 </nav>
+
+<div class="picker-pop" id="picker-pop" role="menu" hidden>
+  <div class="pop-row">
+    <label for="pick-provider">Source</label>
+    <select id="pick-provider"></select>
+  </div>
+  <div class="pop-row">
+    <label for="pick-model">Model</label>
+    <select id="pick-model"></select>
+  </div>
+  <div class="pop-row">
+    <label for="pick-effort">Effort</label>
+    <select id="pick-effort"></select>
+  </div>
+  <button class="pop-reset" id="pick-reset">Reset to default</button>
+</div>
 
 <div class="toast" id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
