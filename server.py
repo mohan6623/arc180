@@ -71,6 +71,15 @@ if len(USERS) < 2:
 SUPABASE_URL = _conf.get("supabase_url", "")
 SUPABASE_KEY = _conf.get("supabase_anon_key", "")
 CLOUD_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
+
+# The server normally runs windowless (pythonw). Without this flag Windows opens
+# a console window for every child process — a git poll every 20s would flash a
+# terminal on screen forever.
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+# Scoring starts here: days before it stay in the knowledge base and on the
+# calendar as real history, but earn no XP — so a rival joining later starts even.
+SEASON_START = _conf.get("season_start") or _conf.get("plan_start", "2026-07-01")
 # Curriculum window. Day 1 of the plan and how many days it runs.
 PLAN_START = date.fromisoformat(_conf.get("plan_start", "2026-07-01"))
 PLAN_DAYS = int(_conf.get("plan_days", 180))
@@ -263,20 +272,24 @@ def user_stats(user, schedule, today, extra_done=None):
     done = {d for d, p in prog.items() if p["status"] == "done"} | set(claims)
     if extra_done:
         done |= extra_done
+    # `done` stays complete so the calendar tells the truth about what happened;
+    # only `scored` earns XP, so a season can start after real work already exists.
+    scored = {d for d in done if d >= SEASON_START}
     xp = 0
-    for d in done:
+    for d in scored:
         info = schedule.get(d)
         xp += XP_BUILD if info and info["kind"] == "build" else XP_WEEKDAY
     # streak: consecutive scheduled days done, walking back from today
     # (today itself doesn't break the streak while still unclaimed)
     streak = 0
+    season_floor = max(PLAN_START, date.fromisoformat(SEASON_START))
     d = today
-    if d.isoformat() not in done:
+    if d.isoformat() not in scored:
         d -= timedelta(days=1)
-    while d >= PLAN_START:
+    while d >= season_floor:
         iso = d.isoformat()
         if iso in schedule:            # Sundays aren't scheduled -> skipped
-            if iso in done:
+            if iso in scored:
                 streak += 1
             else:
                 break
@@ -287,7 +300,7 @@ def user_stats(user, schedule, today, extra_done=None):
         if xp >= th:
             rank, level = name, i + 1
     return {"xp": xp, "streak": streak, "level": level, "rank": rank,
-            "done": sorted(done), "progress": prog}
+            "done": sorted(done), "scored": sorted(scored), "progress": prog}
 
 
 def week_xp(user_done, schedule, week_no):
@@ -419,7 +432,7 @@ def _exec(argv):
         # stdin MUST be closed: codex (and possibly others) block reading
         # "additional input from stdin" when they inherit an open pipe.
         r = subprocess.run(argv, cwd=str(KB), capture_output=True, text=True,
-                           stdin=subprocess.DEVNULL,
+                           stdin=subprocess.DEVNULL, **NO_WINDOW,
                            timeout=300, encoding="utf-8", errors="replace")
         out = (r.stdout or "").strip()
         if r.returncode != 0 and not out:
@@ -509,7 +522,7 @@ def build_state(user):
     from_cloud = {u: {r["date"] for r in rows if r["username"] == u} for u in USERS}
     stats = {u: user_stats(u, schedule, today, extra_done=from_cloud.get(u))
              for u in USERS}
-    cloud_sync_own(user, schedule, stats[user]["done"])
+    cloud_sync_own(user, schedule, stats[user]["scored"])
 
     iso = today.isoformat()
     info = schedule.get(iso)
@@ -549,6 +562,11 @@ def build_state(user):
     # weekly duels
     duels = []
     cur_week = info["week"] if info else None
+    if cur_week is None:
+        # rest/review day: follow the next scheduled day, not week 1
+        upcoming = [s["week"] for d_iso, s in sorted(schedule.items()) if d_iso >= iso]
+        cur_week = upcoming[0] if upcoming else max(
+            (s["week"] for s in schedule.values()), default=1)
     seen = set()
     for w in weeks:
         if w["week"] in seen or w["week"] == 0:
@@ -560,7 +578,7 @@ def build_state(user):
             continue
         # keyed by name, never by position — each client looks up its own side
         duels.append({"week": w["week"], "title": w["title"],
-                      "scores": {u: week_xp(stats[u]["done"], schedule, w["week"])
+                      "scores": {u: week_xp(stats[u]["scored"], schedule, w["week"])
                                  for u in USERS},
                       "live": cur_week == w["week"]})
 
@@ -739,7 +757,7 @@ def _stamp():
 
 def git_kb(*args, timeout=180):
     r = subprocess.run(["git", *args], cwd=str(KB), capture_output=True, text=True,
-                       stdin=subprocess.DEVNULL, timeout=timeout,
+                       stdin=subprocess.DEVNULL, timeout=timeout, **NO_WINDOW,
                        encoding="utf-8", errors="replace")
     return r.returncode, (r.stdout or "").strip(), (r.stderr or "").strip()
 

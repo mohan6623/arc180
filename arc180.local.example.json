@@ -10,6 +10,12 @@
   "plan_start": "2026-07-01",
   "plan_days": 180,
 
+  "season_start": "2026-07-01",
+  "_season_note": "Scoring starts here. Days before it stay in the knowledge base and on the calendar as real history but earn no XP — set it to today when a rival joins late, so both start even. Must match on both machines.",
+
+  "kb_sync": { "enabled": true, "idle_seconds": 120, "poll_seconds": 20 },
+  "_kb_sync_note": "Commits and pushes the knowledge base this many seconds after it stops changing, then rings the Supabase doorbell. Set enabled:false to sync by hand instead.",
+
   "supabase_url": "https://<project-ref>.supabase.co",
   "supabase_anon_key": "<anon public key: Supabase dashboard -> Settings -> API>",
   "_supabase_note": "Optional. Leave both empty to run fully offline — the app then shows only this machine's side."

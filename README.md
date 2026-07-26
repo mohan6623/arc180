@@ -163,7 +163,10 @@ editor shows only the body and preserves any frontmatter you add by hand.
 
 ## Scoring
 
-50 XP for a weekday task, 100 for a Saturday build. Ranks every ~300 XP, from
+Scoring starts at `season_start`. Days before it stay in the knowledge base and on
+the calendar as real history but earn nothing, so a second learner joining a month
+late still starts level with everyone else — no history is rewritten to make that
+true. 50 XP for a weekday task, 100 for a Saturday build. Ranks every ~300 XP, from
 Apprentice to Principal Architect. A streak counts consecutive *scheduled* days
 finished — Sundays aren't scheduled, so they don't break it. A day counts as done
 when it's marked `[status: done]` in the knowledge base **or** claimed in the app;
