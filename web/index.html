@@ -250,27 +250,38 @@ main{padding:0 16px 130px}
 .feed-item .t{font-size:10px;font-weight:600;color:var(--faint);margin-left:auto;flex:none}
 
 /* chat */
-.chat-toolbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.picker{display:flex;flex-direction:column;gap:5px;min-width:0}
-.picker label{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
-.picker select{appearance:none;background:var(--card);border:1px solid var(--line);color:var(--ink);
-  font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 30px 9px 13px;border-radius:99px;cursor:pointer;
-  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
-  background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;
-  max-width:100%;text-overflow:ellipsis}
-.picker select:hover{border-color:var(--faint)}
-.picker select:disabled{opacity:.4;cursor:not-allowed}
-/* composer: the model picker lives with the message box, like Codex and Claude Code */
-.composer{margin-top:14px}
-.composer .chat-input{margin-top:0}
-.composer-bar{display:flex;align-items:center;gap:11px;padding:9px 4px 0}
-.model-chip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
-  color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:7px 13px}
-.model-chip:hover{border-color:var(--faint)}
+/* composer: one box that holds the text, the controls and the send button */
+.composer{margin-top:16px}
+.cbox{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:12px 12px 11px;
+  display:flex;flex-direction:column;gap:9px;transition:border-color .15s}
+.cbox:focus-within{border-color:var(--faint)}
+.cbox textarea{width:100%;border:none;background:transparent;color:var(--ink);font-family:var(--sans);
+  font-size:14.5px;line-height:1.55;resize:none;padding:5px 7px 0;min-height:28px;max-height:184px;
+  overflow-y:auto;display:block}
+.cbox textarea:focus{outline:none}
+.cbox textarea::placeholder{color:var(--faint)}
+.cbar{display:flex;align-items:center;gap:8px;min-width:0}
+.cb-icon{width:33px;height:33px;flex:none;border-radius:50%;display:grid;place-items:center;
+  color:var(--muted);border:1px solid var(--line);background:transparent;transition:.15s}
+.cb-icon:hover{color:var(--ink);border-color:var(--faint)}
+.cb-icon svg{width:17px;height:17px}
+.cb-icon.mic{margin-left:auto}
+.cb-icon.rec{color:var(--coral);border-color:var(--coral);background:rgba(232,117,107,.12);animation:reclive 1.3s ease-in-out infinite}
+@keyframes reclive{50%{box-shadow:0 0 0 5px rgba(232,117,107,.13)}}
+.cb-send{width:33px;height:33px;flex:none;border-radius:50%;background:var(--yellow);color:#111;
+  display:grid;place-items:center;transition:.15s}
+.cb-send:hover{filter:brightness(1.08)}
+.cb-send[disabled]{opacity:.32;cursor:default}
+.cb-send svg{width:16px;height:16px}
+.model-chip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;min-width:0;
+  color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:99px;padding:6px 11px}
+.model-chip span:not(.dot):not(.caret){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-chip:hover{border-color:var(--faint);color:var(--ink)}
 .model-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--purple);flex:none}
 .model-chip .caret{color:var(--faint);font-size:10px}
-.composer-hint{font-size:11px;color:var(--faint)}
+.composer-hint{font-size:10.5px;color:var(--faint);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .composer-hint.switching{color:var(--yellow)}
+.composer-hint:empty{display:none}
 .picker-pop{position:fixed;z-index:60;min-width:250px;background:var(--card);border:1px solid var(--line);
   border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.55);padding:8px}
 .picker-pop[hidden]{display:none}
@@ -287,13 +298,18 @@ main{padding:0 16px 130px}
 .pop-reset{width:100%;text-align:left;font-size:12px;color:var(--muted);padding:9px 10px;border-radius:9px;
   border-top:1px solid var(--line-soft);margin-top:4px}
 .pop-reset:hover{background:var(--card-2);color:var(--ink)}
+.plus-pop{min-width:212px;padding:6px}
+.pop-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;font-size:13px;font-weight:600;
+  color:var(--ink);padding:10px 11px;border-radius:9px}
+.pop-item:hover{background:var(--card-2)}
+.pop-item[hidden]{display:none}
+.pop-item .pi{width:18px;text-align:center;color:var(--faint);font-size:13px;flex:none}
 .thread-head{padding:15px 17px;margin-bottom:12px}
 .thread-title-row{display:flex;align-items:center;gap:12px}
 .thread-title-row h2{font-size:16px;font-weight:700;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .icon-btn{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);
   border-radius:99px;padding:6px 13px;flex:none}
 .icon-btn:hover{color:var(--ink);border-color:var(--faint)}
-.thread-controls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .ctx-meter{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:10.5px;font-weight:600;color:var(--faint)}
 .ctx-bar{width:78px;height:5px;border-radius:3px;background:var(--card-2);overflow:hidden}
 .ctx-bar span{display:block;height:100%;width:0;background:var(--green);transition:width .3s}
@@ -303,10 +319,6 @@ main{padding:0 16px 130px}
   color:var(--muted);background:var(--card-2);border:1px dashed var(--line);border-radius:99px;padding:5px 13px}
 .convo .del{flex:none;color:var(--faint);font-size:15px;padding:4px 8px;border-radius:8px;line-height:1}
 .convo .del:hover{color:var(--coral);background:var(--card-2)}
-.kb-chip{font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
-.kb-chip.on{border-color:var(--purple);color:var(--purple);background:var(--purple-soft)}
-.kb-chip.off{opacity:.4;cursor:not-allowed}
-.btn-new-chat{margin-left:auto;font-size:12.5px;font-weight:700;background:var(--yellow);color:#111;padding:9px 16px;border-radius:99px}
 .convo-list{display:grid;gap:9px}
 .convo{display:flex;gap:13px;align-items:center;padding:15px 16px;text-align:left;width:100%;transition:border-color .15s}
 .convo:hover{border-color:var(--line)}
@@ -329,13 +341,6 @@ main{padding:0 16px 130px}
 .msg.bot .from{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--purple);margin-bottom:8px;white-space:normal}
 .msg.err{border-color:rgba(232,117,107,.4)}
 .msg.thinking{color:var(--muted);font-style:italic}
-.chat-input{display:flex;gap:9px;margin-top:14px}
-.chat-input input{flex:1;border:1px solid var(--line);border-radius:99px;background:var(--card);color:var(--ink);font-size:14px;padding:13px 17px;font-family:var(--sans)}
-.chat-input input::placeholder{color:var(--faint)}
-.chat-input button{background:var(--yellow);color:#111;border-radius:99px;padding:0 20px;font-weight:700;font-size:13.5px}
-.chat-input button[disabled]{opacity:.4}
-.kb-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.55}
-.kb-note code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px}
 .sync-banner{background:rgba(232,117,107,.1);border:1px solid rgba(232,117,107,.4);color:#F0D6D3;border-radius:12px;padding:13px 16px;margin:0 0 16px;font-size:13.5px;line-height:1.55}
 .sync-banner strong{color:var(--coral)}
 .sync-banner pre{margin:9px 0 0;padding:9px 11px;background:var(--bg);border-radius:8px;font-family:ui-monospace,Consolas,monospace;font-size:11px;white-space:pre-wrap;overflow-x:auto;color:var(--muted)}
@@ -503,24 +508,25 @@ main{padding:0 16px 130px}
     </section>
 
     <section class="screen" id="chat">
-      <div class="screen-head">
-        <div class="eyebrow" id="chat-eyebrow">Grounded in your knowledge base</div>
-        <h1>AI Chat</h1>
-        <p>Every conversation you've had, with any brain — answers cite your wiki files.</p>
-      </div>
       <div id="chat-history">
         <div class="convo-list" id="convo-list"></div>
-        <p class="kb-note">Runs headless (<code>claude -p</code> / <code>codex exec</code> / <code>agy -p</code>) on this PC against the KB — your existing subscriptions, no extra API bill. Each conversation is one persistent session; answers can take a minute or two because they read the actual wiki files.</p>
         <div class="composer">
-          <div class="chat-input">
-            <input type="text" id="new-chat-input" placeholder="Ask the knowledge base anything…" aria-label="Ask the knowledge base">
-            <button id="new-chat-send">Ask</button>
-          </div>
-          <div class="composer-bar">
-            <button class="model-chip" data-picker="new" aria-haspopup="menu">
-              <span class="dot"></span><span id="new-chip-label">Claude</span><span class="caret">▾</span>
-            </button>
-            <span class="composer-hint">starts a new session</span>
+          <div class="cbox">
+            <textarea id="new-chat-input" rows="1" placeholder="Ask anything…" aria-label="Ask the knowledge base"></textarea>
+            <div class="cbar">
+              <button class="cb-icon" data-plus="new" aria-haspopup="menu" aria-label="Add">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button class="model-chip" data-picker="new" aria-haspopup="menu">
+                <span class="dot"></span><span id="new-chip-label">Claude</span><span class="caret">▾</span>
+              </button>
+              <button class="cb-icon mic" data-mic="new" aria-label="Dictate">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+              </button>
+              <button class="cb-send" id="new-chat-send" aria-label="Send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -538,15 +544,23 @@ main{padding:0 16px 130px}
         </div>
         <article class="card chat-thread" id="thread-msgs"></article>
         <div class="composer">
-          <div class="chat-input">
-            <input type="text" id="thread-input" placeholder="Continue this conversation…" aria-label="Message">
-            <button id="thread-send">Send</button>
-          </div>
-          <div class="composer-bar">
-            <button class="model-chip" data-picker="thread" aria-haspopup="menu">
-              <span class="dot"></span><span id="thread-chip-label">Claude</span><span class="caret">▾</span>
-            </button>
-            <span class="composer-hint" id="switch-hint"></span>
+          <div class="cbox">
+            <textarea id="thread-input" rows="1" placeholder="Reply…" aria-label="Message"></textarea>
+            <div class="cbar">
+              <button class="cb-icon" data-plus="thread" aria-haspopup="menu" aria-label="Add">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button class="model-chip" data-picker="thread" aria-haspopup="menu">
+                <span class="dot"></span><span id="thread-chip-label">Claude</span><span class="caret">▾</span>
+              </button>
+              <span class="composer-hint" id="switch-hint"></span>
+              <button class="cb-icon mic" data-mic="thread" aria-label="Dictate">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+              </button>
+              <button class="cb-send" id="thread-send" aria-label="Send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -588,6 +602,13 @@ main{padding:0 16px 130px}
     <select id="pick-effort"></select>
   </div>
   <button class="pop-reset" id="pick-reset">Reset to default</button>
+</div>
+
+<div class="picker-pop plus-pop" id="plus-pop" role="menu" hidden>
+  <button class="pop-item" data-insert="topic"><span class="pi">◎</span>Today's topic</button>
+  <button class="pop-item" data-insert="notes"><span class="pi">✎</span>My notes today</button>
+  <button class="pop-item" data-insert="week"><span class="pi">▤</span>This week's plan</button>
+  <button class="pop-item" id="plus-new" hidden><span class="pi">＋</span>Start a new session</button>
 </div>
 
 <div class="toast" id="toast"></div>

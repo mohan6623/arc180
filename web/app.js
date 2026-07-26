@@ -59,10 +59,7 @@ function render() {
     `DAY <b>${pad3(t.day_n)}</b>/${t.plan_days} · 🔥 <b>${me.streak}</b>`;
   $("sb-av").textContent = IC();
   $("sb-name").textContent = cap(USER);
-  if (S.kb_name) {
-    $("chat-eyebrow").textContent = `Grounded in ${S.kb_name}`;
-    $("notes-eyebrow").textContent = `Two-way sync with ${S.kb_name}`;
-  }
+  if (S.kb_name) $("notes-eyebrow").textContent = `Two-way sync with ${S.kb_name}`;
 
   /* overview */
   $("greet-title").textContent = `${greeting()}, ${cap(USER)}`;
@@ -382,31 +379,87 @@ async function fillPicker() {
   renderChips();
 }
 
-function closePicker() { $("picker-pop").hidden = true; }
+function closePops() {
+  $("picker-pop").hidden = true;
+  $("plus-pop").hidden = true;
+}
 
-async function openPicker(anchor) {
-  const pop = $("picker-pop");
-  await fillPicker();
+function placePop(pop, anchor) {
   pop.hidden = false;
   const r = anchor.getBoundingClientRect();
   const h = pop.offsetHeight, w = pop.offsetWidth;
-  // open upwards when there isn't room below — the chip sits near the bottom
+  // open upwards when there isn't room below — the composer sits near the bottom
   const top = r.top - h - 8 > 8 ? r.top - h - 8 : Math.min(r.bottom + 8, innerHeight - h - 8);
   pop.style.top = Math.max(8, top) + "px";
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
 }
 
+async function openPicker(anchor) {
+  await fillPicker();
+  placePop($("picker-pop"), anchor);
+}
+
 document.querySelectorAll("[data-picker]").forEach(btn =>
   btn.addEventListener("click", e => {
     e.stopPropagation();
-    if (!$("picker-pop").hidden) return closePicker();
-    openPicker(btn);
+    const wasOpen = !$("picker-pop").hidden;
+    closePops();
+    if (!wasOpen) openPicker(btn);
+  }));
+
+document.querySelectorAll("[data-plus]").forEach(btn =>
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const wasOpen = !$("plus-pop").hidden;
+    closePops();
+    if (wasOpen) return;
+    plusTarget = btn.dataset.plus;
+    $("plus-new").hidden = plusTarget !== "thread";
+    placePop($("plus-pop"), btn);
   }));
 
 document.addEventListener("click", e => {
-  if (!$("picker-pop").contains(e.target)) closePicker();
+  if (!$("picker-pop").contains(e.target) && !$("plus-pop").contains(e.target)) closePops();
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closePicker(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePops(); });
+
+/* ---------------- the + menu: drop KB context into the box ---------------- */
+let plusTarget = "new";
+
+function composerInput() {
+  return $(plusTarget === "thread" ? "thread-input" : "new-chat-input");
+}
+
+function insertText(el, text) {
+  const at = el.selectionStart ?? el.value.length;
+  const before = el.value.slice(0, at), after = el.value.slice(at);
+  const glue = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+  el.value = before + glue + text + after;
+  const pos = (before + glue + text).length;
+  el.setSelectionRange(pos, pos);
+  el.focus();
+  autoGrow(el);
+  syncSend();
+}
+
+const PLUS_TEXT = {
+  topic: () => `Today's topic — ${S.today.title} (day ${S.today.day_n}). `,
+  notes: () => `Read my notes in people/${USER}/notes/${S.today.date}.md and `,
+  week: () => (S.today.week ? `Look at week ${S.today.week} of the plan and ` : "Look at this week's plan and "),
+};
+
+document.querySelectorAll("[data-insert]").forEach(b =>
+  b.addEventListener("click", () => {
+    const make = PLUS_TEXT[b.dataset.insert];
+    closePops();
+    if (make) insertText(composerInput(), make());
+  }));
+
+$("plus-new").addEventListener("click", () => {
+  closePops();
+  $("back-to-history").click();
+  $("new-chat-input").focus();
+});
 
 $("pick-provider").addEventListener("change", async e => {
   provider = e.target.value;
@@ -487,7 +540,7 @@ function renderThread(c) {
       + (m.effort ? ` · ${m.effort}` : "");
     const moved = m.switched ? `<div class="switch-note">context handed to ${esc(who)}</div>` : "";
     return moved + `<div class="msg bot ${m.ok === false ? "err" : ""}">` +
-      `<div class="from">${esc(who)} · grounded in the KB</div>${esc(m.text)}</div>`;
+      `<div class="from">${esc(who)}</div>${esc(m.text)}</div>`;
   }).join("");
   renderContext(c.context);
 }
@@ -533,10 +586,12 @@ async function sendChat(inputEl, convoId) {
   const message = inputEl.value.trim();
   if (!message) return;
   if (!S.providers[provider]) { toast(`${labelFor(provider)} CLI is not installed on this PC`); return; }
+  stopRec();
   inputEl.value = "";
+  autoGrow(inputEl);
   const who = labelFor(provider) + (model ? ` · ${model}` : "");
   const thinking = `<div class="msg user">${esc(message)}</div>` +
-    `<div class="msg bot thinking">${esc(who)} is reading the knowledge base… this can take a minute or two.</div>`;
+    `<div class="msg bot thinking">${esc(who)} is thinking…</div>`;
   if (convoId && convoId !== "pending") {
     $("thread-msgs").insertAdjacentHTML("beforeend", thinking);
   } else {
@@ -547,8 +602,9 @@ async function sendChat(inputEl, convoId) {
     renderChips();
     $("thread-msgs").innerHTML = thinking;
   }
-  $("thread-send").disabled = true;
-  $("new-chat-send").disabled = true;
+  ["thread-send", "new-chat-send"].forEach(id => {
+    $(id).dataset.busy = "1"; $(id).disabled = true;
+  });
   try {
     const r = await api("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -564,15 +620,79 @@ async function sendChat(inputEl, convoId) {
     toast("Chat failed: " + e.message);
     document.querySelector(".msg.thinking")?.remove();
   } finally {
-    $("thread-send").disabled = false;
-    $("new-chat-send").disabled = false;
+    ["thread-send", "new-chat-send"].forEach(id => delete $(id).dataset.busy);
+    syncSend();
   }
 }
 
+/* ---------------- composer: grow with the text, send from inside the box ---------------- */
+const TOUCH = matchMedia("(pointer: coarse)").matches;
+
+function autoGrow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 184) + "px";
+}
+
+function syncSend() {
+  [["new-chat-input", "new-chat-send"], ["thread-input", "thread-send"]].forEach(([i, s]) => {
+    const inp = $(i), btn = $(s);
+    if (inp && btn && !btn.dataset.busy) btn.disabled = !inp.value.trim();
+  });
+}
+
+[["new-chat-input", null], ["thread-input", "thread"]].forEach(([id, kind]) => {
+  const el = $(id);
+  el.addEventListener("input", () => { autoGrow(el); syncSend(); });
+  el.addEventListener("keydown", e => {
+    // Enter sends on a keyboard, newline on a phone — Shift+Enter is always a newline
+    if (e.key === "Enter" && !e.shiftKey && !TOUCH) {
+      e.preventDefault();
+      sendChat(el, kind ? currentConvo : null);
+    }
+  });
+});
 $("new-chat-send").addEventListener("click", () => sendChat($("new-chat-input"), null));
-$("new-chat-input").addEventListener("keydown", e => { if (e.key === "Enter") sendChat($("new-chat-input"), null); });
 $("thread-send").addEventListener("click", () => sendChat($("thread-input"), currentConvo));
-$("thread-input").addEventListener("keydown", e => { if (e.key === "Enter") sendChat($("thread-input"), currentConvo); });
+syncSend();
+
+/* ---------------- dictation ---------------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recBtn = null, recBase = "";
+
+function stopRec() {
+  if (rec) { try { rec.stop(); } catch {} }
+}
+
+document.querySelectorAll("[data-mic]").forEach(btn =>
+  btn.addEventListener("click", () => {
+    if (!SR) { toast("This browser can't transcribe — Chrome or Edge can"); return; }
+    if (rec) { stopRec(); return; }
+    const el = $(btn.dataset.mic === "thread" ? "thread-input" : "new-chat-input");
+    rec = new SR();
+    rec.lang = navigator.language || "en-IN";
+    rec.continuous = true;
+    rec.interimResults = true;
+    recBtn = btn;
+    recBase = el.value ? el.value.replace(/\s*$/, "") + " " : "";
+    btn.classList.add("rec");
+    el.focus();
+
+    rec.onresult = ev => {
+      let text = "";
+      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
+      el.value = recBase + text.trim();
+      autoGrow(el);
+      syncSend();
+    };
+    rec.onerror = ev => {
+      toast(ev.error === "not-allowed" ? "Microphone blocked — allow it in the address bar" : "Dictation stopped");
+    };
+    rec.onend = () => {
+      recBtn?.classList.remove("rec");
+      rec = null; recBtn = null;
+    };
+    try { rec.start(); } catch { rec = null; btn.classList.remove("rec"); }
+  }));
 
 /* ---------------- claim ---------------- */
 $("complete-btn").addEventListener("click", async () => {
