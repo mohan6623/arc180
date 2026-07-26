@@ -6,8 +6,10 @@ let RIVAL = "";             // the knowledge base's whoami file
 let S = null;               // last state from the server
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const IC = () => cap(USER)[0], RIC = () => cap(RIVAL)[0];
-let provider = "claude";
+let provider = "claude";    // source for the next message
+let model = "";             // "" = that source's default model
 let currentConvo = null;
+const MODELS = {};          // provider -> model list, fetched once
 let localChecks = [];       // local check state when the KB has no subtasks yet
 
 const $ = id => document.getElementById(id);
@@ -326,45 +328,133 @@ $("note-text").addEventListener("input", () => {
 });
 
 /* ---------------- chat ---------------- */
-function renderChat() {
-  const chips = $("provider-chips");
-  const provs = [["claude", "Claude"], ["codex", "Codex"], ["antigravity", "Antigravity"]];
-  chips.innerHTML = provs.map(([k, label]) => {
-    const avail = S.providers[k];
-    const cls = "kb-chip" + (k === provider ? " on" : "") + (avail ? "" : " off");
-    return `<button class="${cls}" data-prov="${k}" ${avail ? "" : 'title="CLI not found on this PC"'}>` +
-           `${k === provider ? "◉ " : ""}${label}</button>`;
-  }).join("");
-  chips.querySelectorAll("[data-prov]").forEach(b => b.addEventListener("click", () => {
-    if (!S.providers[b.dataset.prov]) { toast(`${b.dataset.prov} CLI not found on this PC`); return; }
-    provider = b.dataset.prov;
-    renderChat();
-  }));
+function labelFor(p) {
+  return { claude: "Claude", codex: "Codex", antigravity: "Antigravity", cursor: "Cursor" }[p] || p;
+}
 
-  $("convo-list").innerHTML = (S.convos || []).map(c =>
-    `<button class="card convo" data-convo="${c.id}">` +
-    `<span class="prov ${esc(c.provider)}">${c.provider.slice(0, 3).toUpperCase()}</span>` +
-    `<span class="body"><span class="tt">${esc(c.title)}</span>` +
-    `<span class="snip">${c.count} messages</span></span>` +
-    `<span class="meta"><span class="t">${esc((c.when || "").slice(5, 16).replace("T", " "))}</span></span></button>`
-  ).join("") || `<div class="card empty-note">No conversations yet.<br>Ask your first question below — it runs against the real wiki.</div>`;
+/* provider + model pickers ------------------------------------------------ */
+function fillProviders(sel, chosen) {
+  sel.innerHTML = Object.keys(S.providers || {}).map(p => {
+    const ok = S.providers[p];
+    return `<option value="${p}" ${ok ? "" : "disabled"} ${p === chosen ? "selected" : ""}>` +
+           `${labelFor(p)}${ok ? "" : " — not installed"}</option>`;
+  }).join("");
+}
+
+async function fillModels(sel, prov, chosen) {
+  sel.innerHTML = `<option>loading…</option>`;
+  sel.disabled = true;
+  let models = MODELS[prov];
+  if (!models) {
+    try {
+      models = (await api(`/api/models?provider=${prov}`)).models || [];
+      MODELS[prov] = models;
+    } catch { models = []; }
+  }
+  sel.innerHTML = [`<option value="">Default model</option>`]
+    .concat(models.map(m => `<option value="${esc(m)}" ${m === chosen ? "selected" : ""}>${esc(m)}</option>`))
+    .join("");
+  sel.disabled = false;
+}
+
+function renderChat() {
+  const np = $("new-provider");
+  if (np && !np.dataset.ready) {
+    fillProviders(np, provider);
+    fillModels($("new-model"), provider, model);
+    np.dataset.ready = "1";
+    np.addEventListener("change", () => {
+      provider = np.value;
+      model = "";
+      fillModels($("new-model"), provider, "");
+    });
+    $("new-model").addEventListener("change", () => { model = $("new-model").value; });
+  }
+
+  $("convo-list").innerHTML = (S.convos || []).map(c => {
+    const sub = c.preview ? esc(c.preview) : `${c.count} messages`;
+    const badge = (c.provider || "claude").slice(0, 3).toUpperCase();
+    return `<div class="card convo" data-convo="${c.id}">` +
+      `<span class="prov ${esc(c.provider || "claude")}">${badge}</span>` +
+      `<span class="body"><span class="tt">${esc(c.title)}</span>` +
+      `<span class="snip">${sub}</span></span>` +
+      `<span class="meta"><span class="t">${esc((c.when || "").slice(5, 16).replace("T", " "))}</span>` +
+      `<span class="c">${c.count} msg${c.model ? " · " + esc(c.model) : ""}</span></span>` +
+      `<button class="del" data-del="${c.id}" title="Delete this session">×</button></div>`;
+  }).join("") || `<div class="card empty-note">No sessions yet.<br>Ask something below — it starts a new one.</div>`;
 
   document.querySelectorAll("[data-convo]").forEach(b =>
-    b.addEventListener("click", () => openConvo(b.dataset.convo)));
+    b.addEventListener("click", e => {
+      if (e.target.closest("[data-del]")) return;
+      openConvo(b.dataset.convo);
+    }));
+  document.querySelectorAll("[data-del]").forEach(b =>
+    b.addEventListener("click", async e => {
+      e.stopPropagation();
+      if (!confirm("Delete this session? The transcript is removed from this PC.")) return;
+      await api("/api/convo/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: b.dataset.del }),
+      });
+      await refreshConvos();
+      toast("Session deleted");
+    }));
+}
+
+function renderContext(ctx) {
+  if (!ctx) return;
+  const fill = $("ctx-fill"), label = $("ctx-label");
+  fill.style.width = Math.max(2, ctx.pct) + "%";
+  fill.className = ctx.pct > 85 ? "hot" : ctx.pct > 60 ? "warn" : "";
+  label.textContent = `${ctx.pct}% of ${Math.round(ctx.window / 1000)}k`;
+}
+
+function renderThread(c) {
+  $("thread-title").textContent = c.title || "Session";
+  $("thread-msgs").innerHTML = c.messages.map(m => {
+    if (m.role === "user") return `<div class="msg user">${esc(m.text)}</div>`;
+    const who = labelFor(m.provider || c.provider) + (m.model ? ` · ${m.model}` : "");
+    const moved = m.switched ? `<div class="switch-note">context handed to ${esc(who)}</div>` : "";
+    return moved + `<div class="msg bot ${m.ok === false ? "err" : ""}">` +
+      `<div class="from">${esc(who)} · grounded in the KB</div>${esc(m.text)}</div>`;
+  }).join("");
+  renderContext(c.context);
 }
 
 async function openConvo(id) {
   const c = await api(`/api/convo?id=${id}`);
   currentConvo = id;
+  provider = c.provider || provider;
+  model = c.model || "";
   $("chat-history").style.display = "none";
   $("chat-thread").style.display = "block";
-  $("thread-msgs").innerHTML = c.messages.map(m =>
-    m.role === "user"
-      ? `<div class="msg user">${esc(m.text)}</div>`
-      : `<div class="msg bot ${m.ok === false ? "err" : ""}">` +
-        `<div class="from">${esc(m.provider || c.provider)} · grounded in the KB</div>${esc(m.text)}</div>`
-  ).join("");
+  const tp = $("thread-provider"), tm = $("thread-model");
+  fillProviders(tp, provider);
+  await fillModels(tm, provider, model);
+  tp.onchange = async () => {
+    provider = tp.value;
+    model = "";
+    await fillModels(tm, provider, "");
+    toast(`Next message goes to ${labelFor(provider)} — it receives the whole conversation`);
+  };
+  tm.onchange = () => {
+    model = tm.value;
+    if (model) toast(`Switched to ${model} — the conversation carries over`);
+  };
+  renderThread(c);
 }
+
+$("rename-convo").addEventListener("click", async () => {
+  if (!currentConvo || currentConvo === "pending") return;
+  const title = prompt("Rename this session", $("thread-title").textContent);
+  if (title === null || !title.trim()) return;
+  await api("/api/convo/rename", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: currentConvo, title: title.trim() }),
+  });
+  $("thread-title").textContent = title.trim();
+  await refreshConvos();
+});
 
 $("back-to-history").addEventListener("click", () => {
   currentConvo = null;
@@ -372,32 +462,44 @@ $("back-to-history").addEventListener("click", () => {
   $("chat-history").style.display = "block";
 });
 
+async function refreshConvos() {
+  const st = await api("/api/state");
+  S.convos = st.convos;
+  renderChat();
+}
+
 async function sendChat(inputEl, convoId) {
   const message = inputEl.value.trim();
   if (!message) return;
-  if (!S.providers[provider]) { toast(`${provider} CLI not found on this PC`); return; }
+  if (!S.providers[provider]) { toast(`${labelFor(provider)} CLI is not installed on this PC`); return; }
   inputEl.value = "";
-  const thinkingHtml = `<div class="msg user">${esc(message)}</div>` +
-    `<div class="msg bot thinking">${provider} is reading the KB… this can take a minute or two.</div>`;
-  if (convoId) {
-    $("thread-msgs").insertAdjacentHTML("beforeend", thinkingHtml);
+  const who = labelFor(provider) + (model ? ` · ${model}` : "");
+  const thinking = `<div class="msg user">${esc(message)}</div>` +
+    `<div class="msg bot thinking">${esc(who)} is reading the knowledge base… this can take a minute or two.</div>`;
+  if (convoId && convoId !== "pending") {
+    $("thread-msgs").insertAdjacentHTML("beforeend", thinking);
   } else {
     currentConvo = "pending";
     $("chat-history").style.display = "none";
     $("chat-thread").style.display = "block";
-    $("thread-msgs").innerHTML = thinkingHtml;
+    $("thread-title").textContent = message.slice(0, 60);
+    fillProviders($("thread-provider"), provider);
+    fillModels($("thread-model"), provider, model);
+    $("thread-msgs").innerHTML = thinking;
   }
   $("thread-send").disabled = true;
   $("new-chat-send").disabled = true;
   try {
     const r = await api("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user: USER, provider, message, convo_id: convoId || undefined }),
+      body: JSON.stringify({
+        user: USER, provider, model: model || undefined,
+        message, convo_id: (convoId && convoId !== "pending") ? convoId : undefined,
+      }),
     });
     currentConvo = r.convo_id;
     await openConvo(r.convo_id);
-    const st = await api(`/api/state?user=${USER}`);
-    S.convos = st.convos;
+    await refreshConvos();
   } catch (e) {
     toast("Chat failed: " + e.message);
     document.querySelector(".msg.thinking")?.remove();

@@ -250,7 +250,32 @@ main{padding:0 16px 130px}
 .feed-item .t{font-size:10px;font-weight:600;color:var(--faint);margin-left:auto;flex:none}
 
 /* chat */
-.chat-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.chat-toolbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.picker{display:flex;flex-direction:column;gap:5px;min-width:0}
+.picker label{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.picker select{appearance:none;background:var(--card);border:1px solid var(--line);color:var(--ink);
+  font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 30px 9px 13px;border-radius:99px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  max-width:100%;text-overflow:ellipsis}
+.picker select:hover{border-color:var(--faint)}
+.picker select:disabled{opacity:.4;cursor:not-allowed}
+.thread-head{padding:15px 17px;margin-bottom:12px}
+.thread-title-row{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.thread-title-row h2{font-size:16px;font-weight:700;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);
+  border-radius:99px;padding:6px 13px;flex:none}
+.icon-btn:hover{color:var(--ink);border-color:var(--faint)}
+.thread-controls{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.ctx-meter{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:10.5px;font-weight:600;color:var(--faint)}
+.ctx-bar{width:78px;height:5px;border-radius:3px;background:var(--card-2);overflow:hidden}
+.ctx-bar span{display:block;height:100%;width:0;background:var(--green);transition:width .3s}
+.ctx-bar span.warn{background:var(--yellow)}
+.ctx-bar span.hot{background:var(--coral)}
+.switch-note{align-self:center;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);background:var(--card-2);border:1px dashed var(--line);border-radius:99px;padding:5px 13px}
+.convo .del{flex:none;color:var(--faint);font-size:15px;padding:4px 8px;border-radius:8px;line-height:1}
+.convo .del:hover{color:var(--coral);background:var(--card-2)}
 .kb-chip{font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
 .kb-chip.on{border-color:var(--purple);color:var(--purple);background:var(--purple-soft)}
 .kb-chip.off{opacity:.4;cursor:not-allowed}
@@ -457,7 +482,16 @@ main{padding:0 16px 130px}
         <p>Every conversation you've had, with any brain — answers cite your wiki files.</p>
       </div>
       <div id="chat-history">
-        <div class="chat-toolbar" id="provider-chips"></div>
+        <div class="chat-toolbar">
+          <div class="picker">
+            <label for="new-provider">Source</label>
+            <select id="new-provider"></select>
+          </div>
+          <div class="picker">
+            <label for="new-model">Model</label>
+            <select id="new-model"></select>
+          </div>
+        </div>
         <div class="convo-list" id="convo-list"></div>
         <p class="kb-note">Runs headless (<code>claude -p</code> / <code>codex exec</code> / <code>agy -p</code>) on this PC against the KB — your existing subscriptions, no extra API bill. Each conversation is one persistent session; answers can take a minute or two because they read the actual wiki files.</p>
         <div class="chat-input">
@@ -467,6 +501,26 @@ main{padding:0 16px 130px}
       </div>
       <div id="chat-thread" style="display:none">
         <button class="back-btn" id="back-to-history">‹ All conversations</button>
+        <div class="thread-head card">
+          <div class="thread-title-row">
+            <h2 id="thread-title">…</h2>
+            <button class="icon-btn" id="rename-convo" title="Rename this session">Rename</button>
+          </div>
+          <div class="thread-controls">
+            <div class="picker">
+              <label for="thread-provider">Source</label>
+              <select id="thread-provider"></select>
+            </div>
+            <div class="picker">
+              <label for="thread-model">Model</label>
+              <select id="thread-model"></select>
+            </div>
+            <div class="ctx-meter" id="ctx-meter" title="Context used">
+              <div class="ctx-bar"><span id="ctx-fill"></span></div>
+              <span id="ctx-label">—</span>
+            </div>
+          </div>
+        </div>
         <article class="card chat-thread" id="thread-msgs"></article>
         <div class="chat-input">
           <input type="text" id="thread-input" placeholder="Continue this conversation…" aria-label="Message">

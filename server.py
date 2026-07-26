@@ -391,8 +391,57 @@ def kb_feed(limit=6):
 
 # -------------------------------------------------------------------- chat --
 # antigravity = Google's agy CLI (successor of the retired gemini CLI)
-PROVIDERS = {"claude": "Claude", "codex": "Codex", "antigravity": "Antigravity"}
-PROVIDER_BIN = {"claude": "claude", "codex": "codex", "antigravity": "agy"}
+PROVIDERS = {"claude": "Claude", "codex": "Codex",
+             "antigravity": "Antigravity", "cursor": "Cursor"}
+PROVIDER_BIN = {"claude": "claude", "codex": "codex",
+                "antigravity": "agy", "cursor": "cursor-agent"}
+
+# Context windows, in tokens. Used to decide when a transcript has to be
+# trimmed before it is replayed into a different model.
+CONTEXT_WINDOWS = {
+    "default": 200_000,
+    "opus": 200_000, "sonnet": 200_000, "haiku": 200_000, "fable": 200_000,
+    "gpt-5": 400_000, "gpt-5-codex": 400_000, "o3": 200_000,
+    "gemini": 1_000_000, "gpt-oss": 128_000,
+}
+
+# Models we can offer without asking the CLI. Antigravity is queried live
+# (`agy models`); Codex has no list command, so its set is editable by hand.
+STATIC_MODELS = {
+    "claude": ["opus", "sonnet", "haiku", "fable"],
+    "codex": ["gpt-5-codex", "gpt-5", "o3"],
+    "cursor": ["auto", "claude-4.5-sonnet", "gpt-5"],
+}
+_model_cache = {}
+
+
+def context_window(model):
+    m = (model or "").lower()
+    for key, size in CONTEXT_WINDOWS.items():
+        if key != "default" and key in m:
+            return size
+    return CONTEXT_WINDOWS["default"]
+
+
+def approx_tokens(text):
+    """Cheap estimate — good enough to decide when to trim, and it costs
+    nothing. Roughly four characters per token for English prose."""
+    return max(1, len(text) // 4)
+
+
+def provider_models(provider):
+    if provider in _model_cache:
+        return _model_cache[provider]
+    models = list(STATIC_MODELS.get(provider, []))
+    if provider == "antigravity" and shutil.which("agy"):
+        ok, out = _exec([shutil.which("agy"), "models"])
+        if ok and out:
+            live = [l.strip() for l in out.splitlines()
+                    if l.strip() and not l.lower().startswith(("usage", "available"))]
+            if live:
+                models = live
+    _model_cache[provider] = models
+    return models
 AGY_BRAIN = Path.home() / ".gemini" / "antigravity-cli" / "brain"
 _agy_lock = threading.Lock()
 
@@ -408,6 +457,18 @@ def chats_file():
 def load_chats():
     f = chats_file()
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"convos": []}
+
+
+def find_convo(chats, convo_id):
+    return next((c for c in chats["convos"] if c["id"] == convo_id), None) if convo_id else None
+
+
+def convo_context(convo, model=None):
+    """How full the window is, so the UI can show it before it becomes a problem."""
+    used = sum(approx_tokens(m["text"]) for m in convo.get("messages", []))
+    window = context_window(model or convo.get("model"))
+    return {"used": used, "window": window,
+            "pct": min(100, round(100 * used / window))}
 
 
 def save_chats(obj):
@@ -448,23 +509,56 @@ def _agy_convos():
     return {p.name for p in AGY_BRAIN.iterdir() if p.is_dir()}
 
 
-def run_chat(provider, message, session):
-    """One app conversation == one persistent CLI session.
+def build_handoff(messages, message, model):
+    """Everything the new brain needs to carry on where the last one stopped.
 
-    Returns (ok, reply, session_id). session is None on the first message;
-    the returned id is stored on the convo and reused for every follow-up.
+    Switching provider or model means a CLI session with no memory, so the
+    conversation so far is replayed into its first prompt. Oldest turns are
+    dropped if the transcript would not fit the target model's window — the
+    opening question and the most recent exchanges matter most.
+    """
+    budget = int(context_window(model) * 0.5)          # leave room for the reply
+    turns, used = [], approx_tokens(message) + approx_tokens(GROUNDING_SYS)
+    for m in reversed(messages):
+        line = f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['text']}"
+        cost = approx_tokens(line)
+        if used + cost > budget:
+            break
+        turns.append(line)
+        used += cost
+    turns.reverse()
+    dropped = len(messages) - len(turns)
+    header = "Here is the conversation so far, which you are taking over:\n\n"
+    if dropped > 0:
+        header += f"[{dropped} earlier turn(s) omitted to fit your context window]\n"
+    return (GROUNDING_SYS + "\n\n" + header + "\n".join(turns) +
+            f"\n\nContinue that conversation. The next message is:\n{message}")
+
+
+def run_chat(provider, message, session, model=None, handoff=None):
+    """Send one message. `session` is this provider's CLI session for the
+    conversation, or None to start a fresh one (replaying `handoff` if given).
+
+    Returns (ok, reply, session_id).
     """
     exe = shutil.which(PROVIDER_BIN.get(provider, ""))
     if not exe:
-        return False, f"The {PROVIDERS[provider]} CLI is not on PATH on this PC.", session
+        hint = ("Install the Cursor agent CLI to use this source."
+                if provider == "cursor" else "")
+        return False, f"The {PROVIDERS[provider]} CLI is not on PATH on this PC. {hint}".strip(), session
     first = session is None
-    prompt = (GROUNDING + message) if first else message
+    prompt = (handoff or (GROUNDING + message)) if first else message
 
     if provider == "claude":
         sid = session or str(uuid.uuid4())
-        argv = [exe, "-p", message, "--allowedTools", "Read,Glob,Grep"]
+        argv = [exe, "-p", (prompt if first else message),
+                "--allowedTools", "Read,Glob,Grep"]
+        if model:
+            argv += ["--model", model]
         if first:
-            argv += ["--session-id", sid, "--append-system-prompt", GROUNDING_SYS]
+            argv += ["--session-id", sid]
+            if not handoff:
+                argv += ["--append-system-prompt", GROUNDING_SYS]
         else:
             argv += ["--resume", sid]
         ok, out = _exec(argv)
@@ -474,9 +568,10 @@ def run_chat(provider, message, session):
         # this codex install is missing its Windows sandbox helper
         # (codex-windows-sandbox-setup.exe), so any sandboxed tool call fails;
         # danger-full-access skips the sandbox entirely. Local, personal use.
-        sandbox = ["--sandbox", "danger-full-access"]
+        model_flag = ["-m", model] if model else []
         if first:
-            ok, out = _exec([exe, "exec", "--json", *sandbox, prompt])
+            ok, out = _exec([exe, "exec", "--json", "--sandbox",
+                             "danger-full-access", *model_flag, prompt])
             if not ok:
                 return False, out, None
             sid, text = None, ""
@@ -493,7 +588,8 @@ def run_chat(provider, message, session):
             return True, (text or out), sid
         # `exec resume` rejects --sandbox; the config override works instead
         ok, out = _exec([exe, "exec", "resume", session,
-                         "-c", 'sandbox_mode="danger-full-access"', prompt])
+                         "-c", 'sandbox_mode="danger-full-access"',
+                         *model_flag, message])
         return ok, out, session
 
     if provider == "antigravity":
@@ -501,6 +597,8 @@ def run_chat(provider, message, session):
         # so on the first message we diff ~/.gemini/antigravity-cli/brain/
         # before/after the run to learn which conversation was created.
         flags = ["--sandbox", "--dangerously-skip-permissions"]
+        if model:
+            flags += ["--model", model]
         if first:
             with _agy_lock:
                 before = _agy_convos()
@@ -508,7 +606,18 @@ def run_chat(provider, message, session):
                 new = _agy_convos() - before
             sid = next(iter(new)) if len(new) == 1 else None
             return ok, out, (sid if ok else None)
-        ok, out = _exec([exe, "--conversation", session, "-p", prompt, *flags])
+        ok, out = _exec([exe, "--conversation", session, "-p", message, *flags])
+        return ok, out, session
+
+    if provider == "cursor":
+        model_flag = ["--model", model] if model else []
+        if first:
+            sid = str(uuid.uuid4())
+            ok, out = _exec([exe, "--print", "--force", *model_flag,
+                             "--create-chat", sid, prompt])
+            return ok, out, (sid if ok else None)
+        ok, out = _exec([exe, "--print", "--force", *model_flag,
+                         "--resume", session, message])
         return ok, out, session
 
     return False, "unknown provider", session
@@ -583,9 +692,13 @@ def build_state(user):
                       "live": cur_week == w["week"]})
 
     chats = load_chats()
-    convo_meta = [{"id": c["id"], "title": c["title"], "provider": c["provider"],
-                   "when": c["updated"], "count": len(c["messages"])}
-                  for c in sorted(chats["convos"], key=lambda c: c["updated"], reverse=True)]
+    convo_meta = [{"id": c["id"], "title": c["title"],
+                   "provider": c.get("provider", "claude"), "model": c.get("model"),
+                   "when": c.get("updated", ""), "count": len(c["messages"]),
+                   "preview": next((m["text"] for m in reversed(c["messages"])
+                                    if m["role"] == "assistant"), "")[:110]}
+                  for c in sorted(chats["convos"],
+                                  key=lambda c: c.get("updated", ""), reverse=True)]
 
     return {
         "user": user,
@@ -650,11 +763,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"content": read_note(q.get("user") or whoami(),
                                                     q.get("date", date.today().isoformat()))})
         if u.path == "/api/convo":
-            chats = load_chats()
-            for c in chats["convos"]:
-                if c["id"] == q.get("id"):
-                    return self._json(c)
-            return self._json({"error": "not found"}, 404)
+            convo = find_convo(load_chats(), q.get("id"))
+            if not convo:
+                return self._json({"error": "not found"}, 404)
+            return self._json({**convo, "context": convo_context(convo)})
+
+        if u.path == "/api/models":
+            prov = q.get("provider")
+            if prov:
+                return self._json({"models": provider_models(prov)})
+            return self._json({p: provider_models(p) for p in PROVIDERS
+                               if shutil.which(PROVIDER_BIN[p])})
         if u.path == "/":
             return self._static("index.html")
         return self._static(u.path)
@@ -685,42 +804,77 @@ class Handler(BaseHTTPRequestHandler):
             write_note(user, iso, body.get("content", ""))
             return self._json({"ok": True, "saved": datetime.now().isoformat(timespec="seconds")})
 
+        if self.path == "/api/convo/rename":
+            with _lock:
+                chats = load_chats()
+                convo = find_convo(chats, body.get("id"))
+                if not convo:
+                    return self._json({"error": "not found"}, 404)
+                convo["title"] = (body.get("title") or "").strip()[:120] or convo["title"]
+                save_chats(chats)
+            return self._json({"ok": True, "title": convo["title"]})
+
+        if self.path == "/api/convo/delete":
+            with _lock:
+                chats = load_chats()
+                before = len(chats["convos"])
+                chats["convos"] = [c for c in chats["convos"] if c["id"] != body.get("id")]
+                save_chats(chats)
+            return self._json({"ok": len(chats["convos"]) < before})
+
         if self.path == "/api/chat":
-            provider = body.get("provider", "claude")
             message = (body.get("message") or "").strip()
-            if provider not in PROVIDERS:
-                return self._json({"error": "unknown provider"}, 400)
             if not message:
                 return self._json({"error": "empty message"}, 400)
-            # continuing a convo keeps its provider + CLI session
-            session = None
+            provider = body.get("provider") or "claude"
+            model = body.get("model") or None
+            if provider not in PROVIDERS:
+                return self._json({"error": "unknown provider"}, 400)
+
             with _lock:
                 chats = load_chats()
-                convo = None
-                if body.get("convo_id"):
-                    convo = next((c for c in chats["convos"] if c["id"] == body["convo_id"]), None)
-                if convo:
-                    provider = convo["provider"]
-                    session = convo.get("session")
-            ok, reply, session = run_chat(provider, message, session)
+                convo = find_convo(chats, body.get("convo_id"))
+                history = list(convo["messages"]) if convo else []
+                sessions = dict(convo.get("sessions", {})) if convo else {}
+                prev_model = (convo or {}).get("model")
+
+            # A CLI session belongs to one provider AND one model. Changing
+            # either means a fresh session, so the transcript is replayed into
+            # it — that is what makes switching mid-conversation seamless.
+            key = f"{provider}:{model or 'default'}"
+            session = sessions.get(key)
+            switched = session is None and bool(history)
+            handoff = build_handoff(history, message, model) if switched else None
+
+            ok, reply, session = run_chat(provider, message, session,
+                                          model=model, handoff=handoff)
+
             with _lock:
                 chats = load_chats()
-                convo = None
-                if body.get("convo_id"):
-                    convo = next((c for c in chats["convos"] if c["id"] == body["convo_id"]), None)
+                convo = find_convo(chats, body.get("convo_id"))
                 if convo is None:
-                    convo = {"id": uuid.uuid4().hex[:10],
-                             "title": message[:60], "provider": provider,
-                             "messages": []}
+                    convo = {"id": uuid.uuid4().hex[:10], "title": message[:60],
+                             "created": datetime.now().isoformat(timespec="seconds"),
+                             "messages": [], "sessions": {}}
                     chats["convos"].append(convo)
+                convo.setdefault("sessions", {})
                 if ok and session:
-                    convo["session"] = session
-                convo["messages"].append({"role": "user", "text": message})
-                convo["messages"].append({"role": "assistant", "text": reply,
-                                          "ok": ok, "provider": provider})
+                    convo["sessions"][key] = session
+                convo["provider"] = provider
+                convo["model"] = model
+                convo["messages"].append(
+                    {"role": "user", "text": message,
+                     "ts": datetime.now().isoformat(timespec="seconds")})
+                convo["messages"].append(
+                    {"role": "assistant", "text": reply, "ok": ok,
+                     "provider": provider, "model": model,
+                     "switched": bool(switched),
+                     "ts": datetime.now().isoformat(timespec="seconds")})
                 convo["updated"] = datetime.now().isoformat(timespec="seconds")
                 save_chats(chats)
-            return self._json({"ok": ok, "reply": reply, "convo_id": convo["id"]})
+            return self._json({"ok": ok, "reply": reply, "convo_id": convo["id"],
+                               "switched": bool(switched),
+                               "context": convo_context(convo, model)})
 
         return self._json({"error": "not found"}, 404)
 
