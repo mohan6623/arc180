@@ -382,6 +382,7 @@ async function fillPicker() {
 function closePops() {
   $("picker-pop").hidden = true;
   $("plus-pop").hidden = true;
+  $("more-pop").hidden = true;
 }
 
 function placePop(pop, anchor) {
@@ -419,7 +420,7 @@ document.querySelectorAll("[data-plus]").forEach(btn =>
   }));
 
 document.addEventListener("click", e => {
-  if (!$("picker-pop").contains(e.target) && !$("plus-pop").contains(e.target)) closePops();
+  if (["picker-pop", "plus-pop", "more-pop"].every(id => !$(id).contains(e.target))) closePops();
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closePops(); });
 
@@ -492,24 +493,47 @@ function noteSwitch(text) {
   hint.classList.add("switching");
 }
 
+let showArchived = false;
+
+function convoRow(c) {
+  const sub = c.preview ? esc(c.preview) : `${c.count} messages`;
+  const badge = (c.provider || "claude").slice(0, 3).toUpperCase();
+  return `<div class="card convo ${c.archived ? "archived" : ""}" data-convo="${c.id}">` +
+    `<span class="prov ${esc(c.provider || "claude")}">${badge}</span>` +
+    `<span class="body"><span class="tt">${esc(c.title)}</span>` +
+    `<span class="snip">${sub}</span></span>` +
+    `<span class="meta"><span class="t">${esc((c.when || "").slice(5, 16).replace("T", " "))}</span>` +
+    `<span class="c">${c.count} msg${c.model ? " · " + esc(c.model) : ""}</span></span>` +
+    (c.archived ? `<button class="del" data-unarchive="${c.id}" title="Move back to sessions">↩</button>` : "") +
+    `<button class="del" data-del="${c.id}" title="Delete this session">×</button></div>`;
+}
+
 function renderChat() {
   renderChips();
-  $("convo-list").innerHTML = (S.convos || []).map(c => {
-    const sub = c.preview ? esc(c.preview) : `${c.count} messages`;
-    const badge = (c.provider || "claude").slice(0, 3).toUpperCase();
-    return `<div class="card convo" data-convo="${c.id}">` +
-      `<span class="prov ${esc(c.provider || "claude")}">${badge}</span>` +
-      `<span class="body"><span class="tt">${esc(c.title)}</span>` +
-      `<span class="snip">${sub}</span></span>` +
-      `<span class="meta"><span class="t">${esc((c.when || "").slice(5, 16).replace("T", " "))}</span>` +
-      `<span class="c">${c.count} msg${c.model ? " · " + esc(c.model) : ""}</span></span>` +
-      `<button class="del" data-del="${c.id}" title="Delete this session">×</button></div>`;
-  }).join("") || `<div class="card empty-note">No sessions yet.<br>Ask something below — it starts a new one.</div>`;
+  const all = S.convos || [];
+  const live = all.filter(c => !c.archived), arch = all.filter(c => c.archived);
+
+  let html = live.map(convoRow).join("") ||
+    `<div class="card empty-note">No sessions yet.<br>Ask something below — it starts a new one.</div>`;
+  if (arch.length) {
+    html += `<button class="arch-head ${showArchived ? "open" : ""}" id="arch-toggle">` +
+      `Archived <span class="cnt">${arch.length}</span><span class="car">▼</span></button>` +
+      (showArchived ? arch.map(convoRow).join("") : "");
+  }
+  $("convo-list").innerHTML = html;
+
+  $("arch-toggle")?.addEventListener("click", () => { showArchived = !showArchived; renderChat(); });
 
   document.querySelectorAll("[data-convo]").forEach(b =>
     b.addEventListener("click", e => {
-      if (e.target.closest("[data-del]")) return;
+      if (e.target.closest("[data-del],[data-unarchive]")) return;
       openConvo(b.dataset.convo);
+    }));
+  document.querySelectorAll("[data-unarchive]").forEach(b =>
+    b.addEventListener("click", async e => {
+      e.stopPropagation();
+      await setArchived(b.dataset.unarchive, false);
+      toast("Back in your sessions");
     }));
   document.querySelectorAll("[data-del]").forEach(b =>
     b.addEventListener("click", async e => {
@@ -524,6 +548,14 @@ function renderChat() {
     }));
 }
 
+async function setArchived(id, archived) {
+  await api("/api/convo/archive", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, archived }),
+  });
+  await refreshConvos();
+}
+
 function renderContext(ctx) {
   if (!ctx) return;
   const fill = $("ctx-fill"), label = $("ctx-label");
@@ -532,17 +564,32 @@ function renderContext(ctx) {
   label.textContent = `${ctx.pct}% of ${Math.round(ctx.window / 1000)}k`;
 }
 
+function scrollToBottom(smooth) {
+  const pane = $("thread-msgs");
+  pane.scrollTo({ top: pane.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+}
+
+/* body text, already escaped, with search matches wrapped */
+function withHits(text) {
+  const safe = esc(text);
+  if (!findQ) return safe;
+  const rx = new RegExp(findQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  return safe.replace(rx, m => `<mark class="hit">${m}</mark>`);
+}
+
 function renderThread(c) {
   $("thread-title").textContent = c.title || "Session";
+  lastConvo = c;
   $("thread-msgs").innerHTML = c.messages.map(m => {
-    if (m.role === "user") return `<div class="msg user">${esc(m.text)}</div>`;
+    if (m.role === "user") return `<div class="msg user">${withHits(m.text)}</div>`;
     const who = labelFor(m.provider || c.provider) + (m.model ? ` · ${shortModel(m.model)}` : "")
       + (m.effort ? ` · ${m.effort}` : "");
     const moved = m.switched ? `<div class="switch-note">context handed to ${esc(who)}</div>` : "";
     return moved + `<div class="msg bot ${m.ok === false ? "err" : ""}">` +
-      `<div class="from">${esc(who)}</div>${esc(m.text)}</div>`;
+      `<div class="from">${esc(who)}</div>${withHits(m.text)}</div>`;
   }).join("");
   renderContext(c.context);
+  if (findQ) markHits(); else scrollToBottom(false);
 }
 
 async function openConvo(id) {
@@ -558,28 +605,124 @@ async function openConvo(id) {
   renderThread(c);
 }
 
-$("rename-convo").addEventListener("click", async () => {
-  if (!currentConvo || currentConvo === "pending") return;
+/* ---------------- kebab menu: rename, find, archive, delete ---------------- */
+let lastConvo = null;
+
+$("back-to-history").addEventListener("click", () => {
+  currentConvo = null;
+  closeFind();
+  $("chat-thread").style.display = "none";
+  $("chat-history").style.display = "block";
+});
+
+document.querySelector("[data-more]").addEventListener("click", e => {
+  e.stopPropagation();
+  const wasOpen = !$("more-pop").hidden;
+  closePops();
+  if (wasOpen) return;
+  const archived = (S.convos || []).find(c => c.id === currentConvo)?.archived;
+  $("more-archive").innerHTML = `<span class="pi">▢</span>${archived ? "Unarchive" : "Archive"}`;
+  placePop($("more-pop"), e.currentTarget);
+});
+
+function liveConvo() {
+  if (!currentConvo || currentConvo === "pending") { toast("Send a message first"); return null; }
+  return currentConvo;
+}
+
+$("more-rename").addEventListener("click", async () => {
+  closePops();
+  const id = liveConvo(); if (!id) return;
   const title = prompt("Rename this session", $("thread-title").textContent);
   if (title === null || !title.trim()) return;
   await api("/api/convo/rename", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: currentConvo, title: title.trim() }),
+    body: JSON.stringify({ id, title: title.trim() }),
   });
   $("thread-title").textContent = title.trim();
   await refreshConvos();
 });
 
-$("back-to-history").addEventListener("click", () => {
-  currentConvo = null;
-  $("chat-thread").style.display = "none";
-  $("chat-history").style.display = "block";
+$("more-archive").addEventListener("click", async () => {
+  closePops();
+  const id = liveConvo(); if (!id) return;
+  const archived = !(S.convos || []).find(c => c.id === id)?.archived;
+  await setArchived(id, archived);
+  toast(archived ? "Archived" : "Unarchived");
+  if (archived) $("back-to-history").click();
 });
+
+$("more-delete").addEventListener("click", async () => {
+  closePops();
+  const id = liveConvo(); if (!id) return;
+  if (!confirm("Delete this session? The transcript is removed from this PC.")) return;
+  await api("/api/convo/delete", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  $("back-to-history").click();
+  await refreshConvos();
+  toast("Session deleted");
+});
+
+/* ---------------- find in chat ---------------- */
+let findQ = "", findIdx = 0;
+
+$("more-find").addEventListener("click", () => {
+  closePops();
+  $("find-bar").hidden = false;
+  $("find-input").focus();
+});
+
+function closeFind() {
+  $("find-bar").hidden = true;
+  $("find-input").value = "";
+  if (findQ) { findQ = ""; if (lastConvo) renderThread(lastConvo); }
+  findQ = ""; findIdx = 0;
+}
+
+function markHits() {
+  const hits = [...document.querySelectorAll("#thread-msgs mark.hit")];
+  hits.forEach((h, i) => h.classList.toggle("on", i === findIdx));
+  $("find-count").textContent = hits.length ? `${findIdx + 1}/${hits.length}` : (findQ ? "0" : "");
+  hits[findIdx]?.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function stepHit(d) {
+  const n = document.querySelectorAll("#thread-msgs mark.hit").length;
+  if (!n) return;
+  findIdx = (findIdx + d + n) % n;
+  markHits();
+}
+
+$("find-input").addEventListener("input", e => {
+  findQ = e.target.value.trim();
+  findIdx = 0;
+  if (lastConvo) renderThread(lastConvo);
+  if (!findQ) { $("find-count").textContent = ""; scrollToBottom(false); }
+});
+$("find-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1); }
+  if (e.key === "Escape") closeFind();
+});
+$("find-next").addEventListener("click", () => stepHit(1));
+$("find-prev").addEventListener("click", () => stepHit(-1));
+$("find-close").addEventListener("click", closeFind);
 
 async function refreshConvos() {
   const st = await api("/api/state");
   S.convos = st.convos;
   renderChat();
+}
+
+/* the name shown the moment you send — the server settles on the same shape */
+function draftTitle(message) {
+  const words = message.replace(/\s+/g, " ").trim()
+    .replace(/^(hey|hi|ok|okay|please|can you|could you|i want to|help me)[ ,]+/i, "").split(" ");
+  let t = words.slice(0, 7).join(" ");
+  if (words.length > 7 || t.length > 48) t = t.slice(0, 48).replace(/[ ,;:-]+$/, "") + "…";
+  t = t.replace(/[ ?.!,]+$/, "");
+  return t ? t[0].toUpperCase() + t.slice(1) : "New session";
 }
 
 async function sendChat(inputEl, convoId) {
@@ -596,12 +739,14 @@ async function sendChat(inputEl, convoId) {
     $("thread-msgs").insertAdjacentHTML("beforeend", thinking);
   } else {
     currentConvo = "pending";
+    closeFind();
     $("chat-history").style.display = "none";
     $("chat-thread").style.display = "block";
-    $("thread-title").textContent = message.slice(0, 60);
+    $("thread-title").textContent = draftTitle(message);
     renderChips();
     $("thread-msgs").innerHTML = thinking;
   }
+  scrollToBottom(true);
   ["thread-send", "new-chat-send"].forEach(id => {
     $(id).dataset.busy = "1"; $(id).disabled = true;
   });

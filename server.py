@@ -466,6 +466,19 @@ def load_chats():
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"convos": []}
 
 
+def title_from(message):
+    """A short session name taken from the opening message — no extra CLI round trip."""
+    text = " ".join(message.split())
+    text = re.sub(r"^(hey|hi|ok|okay|please|can you|could you|i want to|help me)[ ,]+", "",
+                  text, flags=re.I)
+    words = text.split(" ")
+    title = " ".join(words[:7])
+    if len(words) > 7 or len(title) > 48:
+        title = title[:48].rstrip(" ,;:-") + "…"
+    title = title.rstrip(" ?.!,")
+    return (title[:1].upper() + title[1:]) if title else "New session"
+
+
 def find_convo(chats, convo_id):
     return next((c for c in chats["convos"] if c["id"] == convo_id), None) if convo_id else None
 
@@ -707,7 +720,7 @@ def build_state(user):
     chats = load_chats()
     convo_meta = [{"id": c["id"], "title": c["title"],
                    "provider": c.get("provider", "claude"), "model": c.get("model"),
-                   "effort": c.get("effort"),
+                   "effort": c.get("effort"), "archived": bool(c.get("archived")),
                    "when": c.get("updated", ""), "count": len(c["messages"]),
                    "preview": next((m["text"] for m in reversed(c["messages"])
                                     if m["role"] == "assistant"), "")[:110]}
@@ -830,6 +843,16 @@ class Handler(BaseHTTPRequestHandler):
                 save_chats(chats)
             return self._json({"ok": True, "title": convo["title"]})
 
+        if self.path == "/api/convo/archive":
+            with _lock:
+                chats = load_chats()
+                convo = find_convo(chats, body.get("id"))
+                if not convo:
+                    return self._json({"error": "not found"}, 404)
+                convo["archived"] = bool(body.get("archived", True))
+                save_chats(chats)
+            return self._json({"ok": True, "archived": convo["archived"]})
+
         if self.path == "/api/convo/delete":
             with _lock:
                 chats = load_chats()
@@ -871,7 +894,7 @@ class Handler(BaseHTTPRequestHandler):
                 chats = load_chats()
                 convo = find_convo(chats, body.get("convo_id"))
                 if convo is None:
-                    convo = {"id": uuid.uuid4().hex[:10], "title": message[:60],
+                    convo = {"id": uuid.uuid4().hex[:10], "title": title_from(message),
                              "created": datetime.now().isoformat(timespec="seconds"),
                              "messages": [], "sessions": {}}
                     chats["convos"].append(convo)

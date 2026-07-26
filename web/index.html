@@ -304,19 +304,47 @@ main{padding:0 16px 130px}
 .pop-item:hover{background:var(--card-2)}
 .pop-item[hidden]{display:none}
 .pop-item .pi{width:18px;text-align:center;color:var(--faint);font-size:13px;flex:none}
-.thread-head{padding:15px 17px;margin-bottom:12px}
-.thread-title-row{display:flex;align-items:center;gap:12px}
-.thread-title-row h2{font-size:16px;font-weight:700;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.icon-btn{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);
-  border-radius:99px;padding:6px 13px;flex:none}
-.icon-btn:hover{color:var(--ink);border-color:var(--faint)}
-.ctx-meter{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:10.5px;font-weight:600;color:var(--faint)}
+/* thread bar: sessions on the left, name in the middle, options on the right */
+.thread-bar{display:flex;align-items:center;gap:12px;padding:11px 6px 13px;border-bottom:1px solid var(--line-soft);margin-bottom:12px}
+.hamb{flex:none;width:34px;height:34px;border-radius:10px;display:flex;flex-direction:column;
+  align-items:flex-start;justify-content:center;gap:4px;padding-left:8px;transition:background .15s}
+.hamb:hover{background:var(--card-2)}
+.hamb span{display:block;height:2px;border-radius:2px;background:var(--ink);transition:width .15s}
+.hamb span:nth-child(1){width:18px}
+.hamb span:nth-child(2){width:12px}
+.hamb span:nth-child(3){width:7px}
+.hamb:hover span:nth-child(2){width:18px}
+.hamb:hover span:nth-child(3){width:18px}
+.tb-mid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tb-mid h2{font-size:15px;font-weight:600;margin:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.kebab{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--muted)}
+.kebab svg{width:18px;height:18px}
+.kebab:hover{background:var(--card-2);color:var(--ink)}
+.pop-item.danger{color:var(--coral)}
+.find-bar{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);
+  border-radius:99px;padding:7px 9px 7px 14px;margin-bottom:12px}
+.find-bar[hidden]{display:none}
+.find-bar>svg{width:15px;height:15px;color:var(--faint);flex:none}
+.find-bar input{flex:1;min-width:0;border:none;background:transparent;color:var(--ink);font-family:var(--sans);font-size:13.5px}
+.find-bar input:focus{outline:none}
+.find-count{font-size:11px;font-weight:600;color:var(--faint);flex:none;font-variant-numeric:tabular-nums}
+.find-nav{width:26px;height:26px;flex:none;border-radius:8px;color:var(--muted);font-size:10px;display:grid;place-items:center}
+.find-nav:hover{background:var(--card-2);color:var(--ink)}
+mark.hit{background:rgba(242,201,76,.25);color:var(--ink);border-radius:3px;padding:0 1px}
+mark.hit.on{background:var(--yellow);color:#111}
+.ctx-meter{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:600;color:var(--faint)}
 .ctx-bar{width:78px;height:5px;border-radius:3px;background:var(--card-2);overflow:hidden}
 .ctx-bar span{display:block;height:100%;width:0;background:var(--green);transition:width .3s}
 .ctx-bar span.warn{background:var(--yellow)}
 .ctx-bar span.hot{background:var(--coral)}
 .switch-note{align-self:center;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);background:var(--card-2);border:1px dashed var(--line);border-radius:99px;padding:5px 13px}
+.arch-head{display:flex;align-items:center;gap:8px;width:100%;font-size:11px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);padding:14px 4px 6px}
+.arch-head .cnt{color:var(--muted);letter-spacing:0}
+.arch-head .car{margin-left:auto;font-size:9px;transition:transform .15s}
+.arch-head.open .car{transform:rotate(180deg)}
+.convo.archived{opacity:.62}
 .convo .del{flex:none;color:var(--faint);font-size:15px;padding:4px 8px;border-radius:8px;line-height:1}
 .convo .del:hover{color:var(--coral);background:var(--card-2)}
 .convo-list{display:grid;gap:9px}
@@ -333,8 +361,11 @@ main{padding:0 16px 130px}
 .convo .meta .t{font-size:10.5px;font-weight:600;color:var(--faint);display:block}
 .convo .meta .c{font-size:10px;color:var(--faint);margin-top:3px;display:block}
 .empty-note{padding:26px 20px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
-.back-btn{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:14px}
-.chat-thread{padding:18px;display:flex;flex-direction:column;gap:14px}
+/* the pane scrolls, the newest message sits at the bottom */
+.chat-thread{padding:18px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;
+  height:calc(100dvh - 330px);min-height:210px;scroll-behavior:smooth;overscroll-behavior:contain}
+.chat-thread>:first-child{margin-top:auto}
+@media (min-width:900px){.chat-thread{height:calc(100dvh - 285px)}}
 .msg{max-width:88%;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:break-word}
 .msg.user{align-self:flex-end;background:var(--yellow-soft);border:1px solid rgba(242,201,76,.3);border-radius:16px 16px 4px 16px;padding:12px 15px}
 .msg.bot{align-self:flex-start;background:var(--card-2);border:1px solid var(--line-soft);border-radius:16px 16px 16px 4px;padding:14px 16px}
@@ -531,16 +562,28 @@ main{padding:0 16px 130px}
         </div>
       </div>
       <div id="chat-thread" style="display:none">
-        <button class="back-btn" id="back-to-history">‹ All conversations</button>
-        <div class="thread-head card">
-          <div class="thread-title-row">
+        <div class="thread-bar">
+          <button class="hamb" id="back-to-history" aria-label="All sessions" title="All sessions">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="tb-mid">
             <h2 id="thread-title">…</h2>
             <div class="ctx-meter" id="ctx-meter" title="Context window used">
               <div class="ctx-bar"><span id="ctx-fill"></span></div>
               <span id="ctx-label">—</span>
             </div>
-            <button class="icon-btn" id="rename-convo" title="Rename this session">Rename</button>
           </div>
+          <button class="kebab" data-more aria-haspopup="menu" aria-label="Session options">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+          </button>
+        </div>
+        <div class="find-bar" id="find-bar" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          <input type="text" id="find-input" placeholder="Search in this chat" aria-label="Search in this chat">
+          <span class="find-count" id="find-count"></span>
+          <button class="find-nav" id="find-prev" aria-label="Previous match">▲</button>
+          <button class="find-nav" id="find-next" aria-label="Next match">▼</button>
+          <button class="find-nav" id="find-close" aria-label="Close search">✕</button>
         </div>
         <article class="card chat-thread" id="thread-msgs"></article>
         <div class="composer">
@@ -609,6 +652,13 @@ main{padding:0 16px 130px}
   <button class="pop-item" data-insert="notes"><span class="pi">✎</span>My notes today</button>
   <button class="pop-item" data-insert="week"><span class="pi">▤</span>This week's plan</button>
   <button class="pop-item" id="plus-new" hidden><span class="pi">＋</span>Start a new session</button>
+</div>
+
+<div class="picker-pop plus-pop" id="more-pop" role="menu" hidden>
+  <button class="pop-item" id="more-rename"><span class="pi">✎</span>Rename</button>
+  <button class="pop-item" id="more-find"><span class="pi">⌕</span>Find in chat</button>
+  <button class="pop-item" id="more-archive"><span class="pi">▢</span>Archive</button>
+  <button class="pop-item danger" id="more-delete"><span class="pi">🗑</span>Delete</button>
 </div>
 
 <div class="toast" id="toast"></div>
