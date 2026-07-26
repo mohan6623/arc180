@@ -1,0 +1,12 @@
+# credentials, per-machine config, private blocklists — never commit
+*.local
+*.local.*
+!*.local.example
+!*.local.example.json
+
+# per-machine state: claims, and AI chat logs, which quote the knowledge base
+# and must never reach a public repo
+data/
+
+__pycache__/
+*.pyc

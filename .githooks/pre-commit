@@ -1,0 +1,42 @@
+#!/bin/sh
+# Refuse to commit anything that identifies a person or a machine.
+# Enable once per clone:  git config core.hooksPath .githooks
+set -e
+
+fail() { echo "pre-commit BLOCKED: $1" >&2; exit 1; }
+
+# 1. files that must never be tracked
+staged=$(git diff --cached --name-only)
+echo "$staged" | grep -qE '(^|/)data/' && fail "data/ is staged (claims + AI chat logs quote the knowledge base)"
+
+# *.local and *.local.<ext> are private; the committed *.local.example* templates are not
+private_files=$(echo "$staged" | grep -E '\.local($|\.[a-z]+$)' | grep -v '\.local\.example' || true)
+[ -n "$private_files" ] && fail "a private config is staged: $private_files"
+
+# 2. secrets and personal identifiers in the staged content
+#    (this hook is excluded — it necessarily contains the patterns it looks for)
+added=$(git diff --cached -U0 -- . ':(exclude).githooks/pre-commit' \
+        | grep '^+' | grep -v '^+++' || true)
+
+check() {
+  echo "$added" | grep -qiE "$1" && fail "$2"
+  return 0
+}
+
+check 'eyJ[A-Za-z0-9_-]{20,}\.'              "a JWT (Supabase anon/service key) appears in the diff"
+check 'sbp_[a-f0-9]{20,}'                    "a Supabase personal access token appears in the diff"
+check 'service_role'                         "a service_role key reference appears in the diff"
+check '(192\.168|10\.[0-9]+\.|100\.(6[4-9]|[7-9][0-9]|1[0-2][0-9]))\.[0-9]+\.[0-9]+' \
+                                             "a private/Tailscale IP address appears in the diff"
+check '[A-Za-z]:\\\\Users\\\\'               "an absolute Windows user path appears in the diff"
+# 3. your own blocklist — one regex per line in .githooks/private-terms.local
+#    (git-ignored: the words you must never publish are themselves private)
+terms=".githooks/private-terms.local"
+if [ -f "$terms" ]; then
+  while IFS= read -r pat; do
+    case "$pat" in ''|'#'*) continue ;; esac
+    check "$pat" "a term from your private blocklist appears in the diff"
+  done < "$terms"
+fi
+
+exit 0

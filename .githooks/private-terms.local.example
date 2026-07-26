@@ -1,0 +1,9 @@
+# Copy to .githooks/private-terms.local (git-ignored) and add one regex per line.
+# Use it for employer names, client names, internal system names, real names —
+# anything that must never appear in a public commit. Lines starting with # are
+# ignored. Matching is case-insensitive.
+#
+# examples:
+# my-employer-name
+# internal-project-codename
+# some ?client ?system

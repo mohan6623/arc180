@@ -1,0 +1,16 @@
+{
+  "_comment": "Copy to arc180.local.json and edit. That file is git-ignored — it holds every machine- and person-specific value, including the Supabase key. Never commit it.",
+
+  "kb_path": "C:/path/to/your-knowledge-base",
+  "port": 8990,
+
+  "users": ["learner-a", "learner-b"],
+  "_users_note": "Exactly two. Each name must match a people/<name>/ folder in the knowledge base and the `user:` value in that machine's whoami file.",
+
+  "plan_start": "2026-07-01",
+  "plan_days": 180,
+
+  "supabase_url": "https://<project-ref>.supabase.co",
+  "supabase_anon_key": "<anon public key: Supabase dashboard -> Settings -> API>",
+  "_supabase_note": "Optional. Leave both empty to run fully offline — the app then shows only this machine's side."
+}

@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070708">
+<title>ARC/180</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<style>
+@font-face{
+  font-family:'DM Sans';
+  src:url('/dmsans.woff2') format('woff2');
+  font-weight:100 1000;
+  font-style:normal;
+  font-display:swap;
+}
+:root{
+  --bg:#070708; --panel:#101013; --card:#161619; --card-2:#1D1D21;
+  --line:#26262B; --line-soft:#1E1E22;
+  --ink:#F2F2F3; --muted:#8F8F98; --faint:#5C5C64;
+  --yellow:#F2C94C; --yellow-soft:rgba(242,201,76,.12);
+  --blue:#2E9BFF; --blue-soft:rgba(46,155,255,.13);
+  --purple:#8B8BF4; --purple-soft:rgba(139,139,244,.13);
+  --coral:#E8756B; --green:#6FCF97;
+  --shadow:0 2px 6px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.45);
+  --sans:'DM Sans',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;min-height:100vh}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+:focus-visible{outline:2px solid var(--yellow);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+
+.shell{max-width:1400px;margin:0 auto;min-height:100vh}
+main{padding:0 16px 130px}
+@media (min-width:900px){
+  .shell{display:grid;grid-template-columns:236px 1fr;padding:10px 12px 10px 0;gap:0}
+  main{background:var(--panel);border:1px solid var(--line-soft);border-radius:22px;padding:30px 34px 56px;min-height:calc(100vh - 20px)}
+}
+
+/* sidebar */
+.sb{display:none}
+@media (min-width:900px){
+  .sb{display:flex;flex-direction:column;padding:24px 18px 20px;gap:2px}
+  .sb-profile{display:flex;align-items:center;gap:10px;padding:4px 8px;margin-bottom:16px}
+  .sb-profile .pav{width:30px;height:30px;border-radius:9px;background:var(--card-2);display:grid;place-items:center;font-size:13px;font-weight:700}
+  .sb-profile .pname{font-size:14px;font-weight:600}
+  .sb-profile svg{width:14px;height:14px;color:var(--faint);margin-left:auto}
+  .sb-search{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line-soft);border-radius:99px;padding:9px 14px;color:var(--faint);font-size:12.5px;margin-bottom:22px}
+  .sb-search svg{width:14px;height:14px}
+  .sb-search kbd{margin-left:auto;font-family:inherit;font-size:10px;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--faint)}
+  .sb-item{display:flex;gap:11px;align-items:center;padding:9px 12px;border-radius:11px;font-size:13.5px;font-weight:500;color:var(--muted);border:1px solid transparent;text-align:left}
+  .sb-item svg{width:16px;height:16px;flex:none}
+  .sb-item:hover{color:var(--ink)}
+  .sb-item.active{background:var(--card-2);border-color:var(--line);color:var(--ink)}
+  .sb-div{height:1px;background:var(--line-soft);margin:14px 6px}
+  .sb-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
+  .sb-sync{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+  .sb-sync .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 4px 12px;position:sticky;top:0;z-index:5;background:linear-gradient(var(--bg) 75%,transparent)}
+.wordmark{font-weight:700;font-size:17px;letter-spacing:.02em}
+.wordmark b{color:var(--yellow);font-weight:700}
+.topbar .day-chip{font-size:12px;font-weight:600;letter-spacing:.08em;color:var(--muted);background:var(--card);border:1px solid var(--line);padding:7px 12px;border-radius:99px}
+.topbar .day-chip b{color:var(--ink)}
+@media (min-width:900px){.topbar{display:none}}
+
+/* mobile nav */
+.tabbar{position:fixed;bottom:16px;left:0;right:0;z-index:10;display:flex;gap:11px;align-items:center;justify-content:center;padding:0 14px;pointer-events:none}
+.nav-pill{pointer-events:auto;display:flex;align-items:center;justify-content:space-between;flex:1;max-width:420px;background:rgba(28,28,31,.97);border:1px solid var(--line);border-radius:999px;padding:7px;box-shadow:0 14px 38px rgba(0,0,0,.55);backdrop-filter:blur(14px)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0 8px;border-radius:999px;color:#C6C6CD;font-size:10.5px;font-weight:500;flex:1;letter-spacing:.01em}
+.tab svg{width:21px;height:21px}
+.tab.active{background:#2E2E34;color:#fff}
+.chat-fab{pointer-events:auto;width:64px;height:64px;flex:none;border-radius:50%;background:radial-gradient(circle at 35% 30%,#2E2E33,#222226);border:1px solid #33333A;color:#fff;display:grid;place-items:center;box-shadow:0 14px 38px rgba(0,0,0,.55);transition:transform .12s}
+.chat-fab svg{width:25px;height:25px}
+.chat-fab:active{transform:scale(.94)}
+.chat-fab.active{border-color:var(--yellow)}
+@media (min-width:900px){.tabbar{display:none}}
+
+.screen{display:none;padding-top:6px}
+.screen.on{display:block;animation:rise .22s ease}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.screen-head{margin:6px 0 20px}
+.screen-head h1{font-size:clamp(23px,4.5vw,29px);font-weight:700;letter-spacing:-.02em;margin:8px 0 5px;text-wrap:balance}
+.screen-head p{margin:0;color:var(--muted);font-size:14px;max-width:60ch}
+.greet-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:6px 0 22px}
+.greet h1{font-size:clamp(24px,4.5vw,30px);font-weight:700;letter-spacing:-.02em;margin:0 0 5px}
+.greet p{margin:0;color:var(--muted);font-size:13.5px}
+.hdr-actions{display:none}
+@media (min-width:900px){
+  .hdr-actions{display:flex;gap:9px}
+  .hdr-actions button{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:99px;padding:8px 15px;font-size:12.5px;font-weight:600;background:var(--card);color:var(--ink)}
+  .hdr-actions button svg{width:14px;height:14px}
+  .hdr-actions button:hover{border-color:var(--faint)}
+}
+.card{background:var(--card);border:1px solid var(--line-soft);border-radius:var(--r);box-shadow:var(--shadow)}
+.card h3{font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+
+/* overview */
+.today-grid{display:grid;gap:14px}
+@media (min-width:900px){.today-grid{grid-template-columns:1.6fr 1fr;align-items:start}}
+.mission{padding:22px 20px 20px}
+.mission .kicker{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.mission .kicker .xp-tag{font-size:12px;font-weight:700;color:var(--yellow);background:var(--yellow-soft);padding:4px 11px;border-radius:99px}
+.mission h2{font-size:clamp(21px,4vw,26px);font-weight:700;margin:12px 0 5px;letter-spacing:-.02em;text-wrap:balance}
+.mission .theme{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+.mission .task{font-size:14.5px;line-height:1.62;background:var(--card-2);padding:14px 16px;border-radius:12px;margin:0 0 16px;color:#D9D9DD}
+.checks{display:flex;flex-direction:column;gap:2px;margin-bottom:16px}
+.check{display:flex;align-items:center;gap:13px;padding:12px 6px;border-bottom:1px solid var(--line-soft);text-align:left;width:100%}
+.check:last-of-type{border-bottom:none}
+.check .box{width:23px;height:23px;flex:none;border:2px solid var(--faint);border-radius:50%;display:grid;place-items:center;color:transparent;font-size:12px;transition:all .15s}
+.check .lbl{font-size:14px;transition:color .15s}
+.check.done .box{background:var(--blue);border-color:var(--blue);color:#fff}
+.check.done .lbl{color:var(--muted);text-decoration:line-through}
+.check.kb{cursor:default}
+.check .src{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--faint);flex:none}
+.btn-primary{display:block;width:100%;padding:14px;border-radius:99px;background:var(--yellow);color:#111;font-weight:700;font-size:15px;transition:transform .12s,opacity .15s}
+.btn-primary:active{transform:scale(.98)}
+.btn-primary[disabled]{opacity:.35;cursor:not-allowed}
+.done-msg{display:none;text-align:center;font-size:13px;font-weight:700;color:var(--yellow);padding:13px}
+.rival-ping{display:flex;gap:12px;align-items:center;padding:14px 16px;margin-top:14px}
+.rival-ping .avatar{background:var(--blue-soft);color:var(--blue)}
+.rival-ping p{margin:0;font-size:13.5px;line-height:1.5}
+.rival-ping .t{color:var(--muted);font-size:12px}
+.avatar{width:38px;height:38px;flex:none;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:15px}
+.side-stack{display:grid;gap:14px}
+.stat-duo{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.stat{padding:16px 17px}
+.stat .v{font-size:27px;font-weight:700;letter-spacing:-.02em}
+.stat .v small{font-size:13px;color:var(--muted);font-weight:500}
+.stat .l{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.stat.streak .v{color:var(--yellow)}
+.minirail{padding:17px 18px 22px}
+
+/* course rail */
+.rail-track{position:relative;height:58px}
+.rail-track .line{position:absolute;left:0;right:0;top:50%;height:3px;background:var(--line);border-radius:2px}
+.rail-track .fill{position:absolute;left:0;top:50%;height:3px;background:var(--yellow);border-radius:2px}
+.rail-track .station{position:absolute;top:50%;width:9px;height:9px;transform:translate(-50%,-50%);border-radius:50%;background:var(--bg);border:2px solid var(--line)}
+.rail-track .station.hit{border-color:var(--yellow)}
+.rail-track .st-lbl{position:absolute;top:calc(50% + 13px);transform:translateX(-50%);font-size:9px;font-weight:600;letter-spacing:.12em;color:var(--faint)}
+.rail-track .racer{position:absolute;transform:translate(-50%,-50%);width:25px;height:25px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:11px;box-shadow:var(--shadow);z-index:2}
+.rail-track .racer.m{background:var(--yellow);color:#111;top:calc(50% - 15px)}
+.rail-track .racer.a{background:var(--blue);color:#fff;top:calc(50% + 15px)}
+
+/* calendar */
+.cal{padding:18px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-head .mo{font-weight:700;font-size:15px;letter-spacing:.06em}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.dow{font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-align:center;padding:4px 0 8px}
+.day{position:relative;min-height:66px;border:1px solid var(--line-soft);border-radius:12px;padding:7px 8px;background:var(--card-2);display:flex;flex-direction:column;gap:3px}
+.day.out{opacity:.28;background:transparent;border:none}
+.day.rest{background:transparent;border-style:dashed}
+.day.build{background:var(--yellow-soft);border-color:rgba(242,201,76,.25)}
+.day .n{font-size:12px;font-weight:600}
+.day .topic{font-size:9.5px;line-height:1.3;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.day .dots{margin-top:auto;display:flex;gap:4px}
+.pip{width:8px;height:8px;border-radius:50%;border:1.5px solid transparent}
+.pip.m-done{background:var(--yellow)}
+.pip.a-done{background:var(--blue)}
+.pip.m-miss,.pip.a-miss{border-color:var(--coral)}
+.pip.m-wait{border-color:var(--yellow);opacity:.5}
+.pip.a-wait{border-color:var(--blue);opacity:.5}
+.pip.future{border-color:var(--faint);opacity:.35}
+.day.today-cell{border:1.5px solid var(--yellow)}
+.day.today-cell .n{color:var(--yellow)}
+@media (max-width:560px){.day{min-height:52px;padding:6px}.day .topic{display:none}}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding:0 4px}
+.legend span{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.week-list{margin-top:16px;display:grid;gap:9px}
+.week-item{display:flex;align-items:center;gap:13px;padding:14px 16px}
+.week-item .wno{font-size:11px;font-weight:700;color:var(--yellow);flex:none;width:30px}
+.week-item .wt{font-size:13.5px;font-weight:600}
+.week-item .wd{font-size:11px;font-weight:600;color:var(--faint);margin-left:auto;flex:none;letter-spacing:.06em}
+
+/* arena */
+.duel-banner{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin-bottom:12px}
+.player{padding:17px;display:flex;flex-direction:column;gap:9px}
+.player.me{border-color:rgba(242,201,76,.3)}
+.player.rival{border-color:rgba(46,155,255,.3)}
+.player .who{display:flex;align-items:center;gap:10px}
+.player.me .avatar{background:var(--yellow-soft);color:var(--yellow)}
+.player.rival .avatar{background:var(--blue-soft);color:var(--blue)}
+.player .name{font-weight:700;font-size:14.5px}
+.player .rank{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.player .xp{font-size:27px;font-weight:700;letter-spacing:-.02em}
+.player .xp small{font-size:12px;color:var(--muted);font-weight:500}
+.player .sub{display:flex;gap:13px;font-size:11px;font-weight:500;color:var(--muted)}
+.player .sub b{color:var(--ink)}
+.vs{align-self:center;font-weight:700;font-size:14px;color:var(--faint)}
+.lead-note{text-align:center;font-size:11.5px;font-weight:600;letter-spacing:.08em;color:var(--blue);margin:0 0 18px}
+@media (max-width:560px){.player .xp{font-size:21px}.player{padding:13px}}
+.arena-rail{padding:18px 18px 24px;margin-bottom:14px}
+.duels{padding:17px 18px;margin-bottom:14px}
+.duel-row{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line-soft)}
+.duel-row:first-of-type{border-top:none;padding-top:2px}
+.duel-row .w{font-size:11px;font-weight:700;color:var(--faint)}
+.duel-bar{position:relative;height:10px;border-radius:5px;background:var(--card-2);overflow:hidden;display:flex}
+.duel-bar .m-side{background:var(--yellow);height:100%}
+.duel-bar .a-side{background:var(--blue);height:100%}
+.duel-row .res{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.duel-row .res.m{color:var(--yellow)}
+.duel-row .res.a{color:var(--blue)}
+.duel-row .res.live{color:var(--coral)}
+.duel-row .res.tie{color:var(--muted)}
+.badges{padding:17px 18px}
+.badge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
+.badge{border:1px solid var(--line-soft);border-radius:13px;padding:12px 13px;background:var(--card-2)}
+.badge .ic{font-size:19px;margin-bottom:6px}
+.badge .bn{font-size:12.5px;font-weight:700}
+.badge .bd{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.badge .own{display:flex;gap:4px;margin-top:8px}
+.badge.locked{opacity:.4;border-style:dashed}
+.mini-pip{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:8.5px;font-weight:700}
+.mini-pip.m{background:var(--yellow);color:#111}
+.mini-pip.a{background:var(--blue);color:#fff}
+
+/* notes */
+.notes-grid{display:grid;gap:14px}
+@media (min-width:900px){.notes-grid{grid-template-columns:1.5fr 1fr;align-items:start}}
+.notes{padding:17px 18px}
+.notes .head-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:13px}
+.notes .head-row h3{margin:0}
+.sync-state{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--green);display:inline-flex;align-items:center;gap:5px}
+.sync-state::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
+.sync-state.saving{color:var(--muted)}
+.sync-state.saving::before{background:var(--muted)}
+.notes textarea{width:100%;min-height:190px;resize:vertical;border:1px solid var(--line);border-radius:12px;background:var(--card-2);color:var(--ink);font-family:var(--sans);font-size:13.5px;line-height:1.6;padding:13px 14px}
+.notes .hint{font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5}
+.notes .hint code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:var(--yellow-soft);color:var(--yellow);padding:1px 6px;border-radius:5px}
+.note-files{padding:17px 18px}
+.nf{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line-soft)}
+.nf:first-of-type{border-top:none;padding-top:0}
+.nf .ic{width:34px;height:34px;flex:none;border-radius:10px;background:var(--card-2);display:grid;place-items:center;font-size:15px}
+.nf .tt{font-size:13.5px;font-weight:600}
+.nf .pp{font-family:ui-monospace,Consolas,monospace;font-size:10px;color:var(--faint)}
+.nf .t{margin-left:auto;font-size:10.5px;font-weight:600;color:var(--faint);flex:none}
+.kb-feed{padding:17px 18px}
+.feed-item{display:flex;gap:10px;padding:10px 0;border-top:1px dashed var(--line-soft);font-size:12.5px;line-height:1.5;align-items:center}
+.feed-item:first-of-type{border-top:none;padding-top:0}
+.feed-item .who-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--purple)}
+.feed-item code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:var(--card-2);padding:1px 6px;border-radius:5px;color:#C9C9D2}
+.feed-item .t{font-size:10px;font-weight:600;color:var(--faint);margin-left:auto;flex:none}
+
+/* chat */
+.chat-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.kb-chip{font-size:11px;font-weight:600;letter-spacing:.04em;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
+.kb-chip.on{border-color:var(--purple);color:var(--purple);background:var(--purple-soft)}
+.kb-chip.off{opacity:.4;cursor:not-allowed}
+.btn-new-chat{margin-left:auto;font-size:12.5px;font-weight:700;background:var(--yellow);color:#111;padding:9px 16px;border-radius:99px}
+.convo-list{display:grid;gap:9px}
+.convo{display:flex;gap:13px;align-items:center;padding:15px 16px;text-align:left;width:100%;transition:border-color .15s}
+.convo:hover{border-color:var(--line)}
+.convo .prov{width:38px;height:38px;flex:none;border-radius:12px;display:grid;place-items:center;font-size:10px;font-weight:700;letter-spacing:.03em}
+.convo .prov.claude{background:var(--purple-soft);color:var(--purple)}
+.convo .prov.codex{background:var(--blue-soft);color:var(--blue)}
+.convo .prov.antigravity{background:var(--yellow-soft);color:var(--yellow)}
+.convo .body{min-width:0}
+.convo .tt{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.convo .snip{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;display:block}
+.convo .meta{margin-left:auto;flex:none;text-align:right}
+.convo .meta .t{font-size:10.5px;font-weight:600;color:var(--faint);display:block}
+.convo .meta .c{font-size:10px;color:var(--faint);margin-top:3px;display:block}
+.empty-note{padding:26px 20px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
+.back-btn{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:14px}
+.chat-thread{padding:18px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:88%;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow-wrap:break-word}
+.msg.user{align-self:flex-end;background:var(--yellow-soft);border:1px solid rgba(242,201,76,.3);border-radius:16px 16px 4px 16px;padding:12px 15px}
+.msg.bot{align-self:flex-start;background:var(--card-2);border:1px solid var(--line-soft);border-radius:16px 16px 16px 4px;padding:14px 16px}
+.msg.bot .from{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--purple);margin-bottom:8px;white-space:normal}
+.msg.err{border-color:rgba(232,117,107,.4)}
+.msg.thinking{color:var(--muted);font-style:italic}
+.chat-input{display:flex;gap:9px;margin-top:14px}
+.chat-input input{flex:1;border:1px solid var(--line);border-radius:99px;background:var(--card);color:var(--ink);font-size:14px;padding:13px 17px;font-family:var(--sans)}
+.chat-input input::placeholder{color:var(--faint)}
+.chat-input button{background:var(--yellow);color:#111;border-radius:99px;padding:0 20px;font-weight:700;font-size:13.5px}
+.chat-input button[disabled]{opacity:.4}
+.kb-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.55}
+.kb-note code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px}
+.toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--card-2);border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:99px;font-size:13px;font-weight:600;box-shadow:var(--shadow);z-index:50;opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.show{opacity:1}
+#loading{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sb" aria-label="Main">
+    <div class="sb-profile">
+      <span class="pav" id="sb-av">M</span>
+      <span class="pname" id="sb-name">—</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+    </div>
+    <div class="sb-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      Quick Search <kbd>⌘K</kbd>
+    </div>
+    <button class="sb-item active" data-go="today">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7.5" cy="7.5" r="3"/><circle cx="16.5" cy="7.5" r="3"/><circle cx="7.5" cy="16.5" r="3"/><path d="M16.5 14v5M14 16.5h5"/></svg>
+      Overview</button>
+    <button class="sb-item" data-go="notes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4.5" y="4" width="15" height="17" rx="2.5"/><path d="M9 2.5v3M15 2.5v3M9 11.5h6M9 15.5h4"/></svg>
+      Notes</button>
+    <button class="sb-item" data-go="calendar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="5" width="17" height="16" rx="3"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></svg>
+      Calendar</button>
+    <button class="sb-item" data-go="arena">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/></svg>
+      Arena</button>
+    <div class="sb-div"></div>
+    <button class="sb-item" data-go="chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
+      AI Chat</button>
+    <div class="sb-foot">
+      <span class="sb-sync"><span class="dot"></span><span id="sb-sync-label">Local · KB live</span></span>
+    </div>
+  </nav>
+
+  <main>
+    <header class="topbar">
+      <div class="wordmark">ARC<b>/180</b></div>
+      <div class="day-chip num" id="day-chip">…</div>
+    </header>
+
+    <div id="loading">Loading your course…</div>
+
+    <section class="screen" id="today">
+      <div class="greet-row">
+        <div class="greet">
+          <h1 id="greet-title">…</h1>
+          <p id="greet-sub">…</p>
+        </div>
+        <div class="hdr-actions">
+          <button data-go="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="4" width="15" height="17" rx="2.5"/><path d="M9 11.5h6M12 8.5v6"/></svg>New Note</button>
+          <button data-go="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>Ask AI</button>
+        </div>
+      </div>
+      <div class="today-grid">
+        <div>
+          <article class="card mission">
+            <div class="kicker">
+              <span class="eyebrow" style="color:var(--yellow)" id="mission-eyebrow">…</span>
+              <span class="xp-tag num" id="mission-xp">…</span>
+            </div>
+            <h2 id="mission-title">…</h2>
+            <p class="theme" id="mission-theme">…</p>
+            <p class="task" id="mission-task">…</p>
+            <div class="checks" id="mission-checks"></div>
+            <button class="btn-primary" id="complete-btn">…</button>
+            <div class="done-msg" id="done-msg"></div>
+          </article>
+          <article class="card rival-ping" id="rival-ping"></article>
+        </div>
+        <div class="side-stack">
+          <div class="stat-duo">
+            <article class="card stat streak">
+              <div class="v num" id="stat-streak">…</div>
+              <div class="l">🔥 Your streak</div>
+            </article>
+            <article class="card stat">
+              <div class="v num" id="stat-xp">…</div>
+              <div class="l" id="stat-rank">…</div>
+            </article>
+          </div>
+          <article class="card minirail">
+            <h3>The course · 180 days</h3>
+            <div class="rail-track" data-rail></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="calendar">
+      <div class="screen-head">
+        <div class="eyebrow">Curriculum · one topic per day</div>
+        <h1 id="cal-title">…</h1>
+        <p id="cal-hint">Every dot is a rival.</p>
+      </div>
+      <article class="card cal">
+        <div class="cal-head">
+          <span class="mo" id="cal-month-label">…</span>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="legend">
+          <span><span class="pip m-done"></span><span id="lg-me">You done</span></span>
+          <span><span class="pip a-done"></span><span id="lg-rival">Rival done</span></span>
+          <span><span class="pip m-miss"></span>Missed</span>
+          <span><span class="pip future"></span>Upcoming</span>
+        </div>
+      </article>
+      <div class="week-list" id="week-list"></div>
+    </section>
+
+    <section class="screen" id="arena">
+      <div class="screen-head">
+        <div class="eyebrow">Head to head · resets never</div>
+        <h1>The Arena</h1>
+      </div>
+      <div class="duel-banner" id="duel-banner"></div>
+      <p class="lead-note" id="lead-note"></p>
+      <article class="card arena-rail">
+        <h3>The course · Jul 1 → Dec 27 · 180 days</h3>
+        <div class="rail-track" data-rail></div>
+      </article>
+      <article class="card duels">
+        <h3>Weekly duels · most XP wins the week</h3>
+        <div id="duel-rows"></div>
+      </article>
+      <article class="card badges">
+        <h3>Badges</h3>
+        <div class="badge-grid" id="badge-grid"></div>
+      </article>
+    </section>
+
+    <section class="screen" id="notes">
+      <div class="screen-head">
+        <div class="eyebrow" id="notes-eyebrow">Two-way sync with your knowledge base</div>
+        <h1>Notes</h1>
+        <p>Type here, it lands in the KB. Edit the KB file, refresh, it's here.</p>
+      </div>
+      <div class="notes-grid">
+        <div class="side-stack">
+          <article class="card notes">
+            <div class="head-row">
+              <h3 id="note-title">Today</h3>
+              <span class="sync-state" id="note-sync">IN THE KB</span>
+            </div>
+            <textarea id="note-text" placeholder="Scratch notes for today's topic…"></textarea>
+            <p class="hint" id="note-hint"></p>
+          </article>
+          <article class="card note-files">
+            <h3>Recents</h3>
+            <div id="note-recents"></div>
+          </article>
+        </div>
+        <article class="card kb-feed">
+          <h3>Fresh from the KB</h3>
+          <div id="kb-feed"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="screen" id="chat">
+      <div class="screen-head">
+        <div class="eyebrow" id="chat-eyebrow">Grounded in your knowledge base</div>
+        <h1>AI Chat</h1>
+        <p>Every conversation you've had, with any brain — answers cite your wiki files.</p>
+      </div>
+      <div id="chat-history">
+        <div class="chat-toolbar" id="provider-chips"></div>
+        <div class="convo-list" id="convo-list"></div>
+        <p class="kb-note">Runs headless (<code>claude -p</code> / <code>codex exec</code> / <code>agy -p</code>) on this PC against the KB — your existing subscriptions, no extra API bill. Each conversation is one persistent session; answers can take a minute or two because they read the actual wiki files.</p>
+        <div class="chat-input">
+          <input type="text" id="new-chat-input" placeholder="Ask the knowledge base anything…" aria-label="Ask the knowledge base">
+          <button id="new-chat-send">Ask</button>
+        </div>
+      </div>
+      <div id="chat-thread" style="display:none">
+        <button class="back-btn" id="back-to-history">‹ All conversations</button>
+        <article class="card chat-thread" id="thread-msgs"></article>
+        <div class="chat-input">
+          <input type="text" id="thread-input" placeholder="Continue this conversation…" aria-label="Message">
+          <button id="thread-send">Send</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<nav class="tabbar" aria-label="Main">
+  <div class="nav-pill">
+    <button class="tab active" data-go="today">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="7.5" cy="7.5" r="3"/><circle cx="16.5" cy="7.5" r="3"/><circle cx="7.5" cy="16.5" r="3"/><path d="M16.5 14v5M14 16.5h5"/></svg>
+      Overview</button>
+    <button class="tab" data-go="notes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4.5" y="4" width="15" height="17" rx="2.5"/><path d="M9 2.5v3M15 2.5v3M9 11.5h6M9 15.5h4"/></svg>
+      Notes</button>
+    <button class="tab" data-go="calendar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="5" width="17" height="16" rx="3"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></svg>
+      Calendar</button>
+    <button class="tab" data-go="arena">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0V4z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/></svg>
+      Arena</button>
+  </div>
+  <button class="chat-fab" data-go="chat" aria-label="AI chat history">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
